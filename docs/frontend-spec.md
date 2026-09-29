@@ -1,7 +1,7 @@
 # Omniboard v2 前端功能与交互规格
 
 - 状态:**Draft**,2026-09-29 从 v1 提炼,待逐页对照(proposal §9 第 6 步)补漏。
-- 用途:与 [proposal.md](proposal.md) 一起构成 v2 的全部需求。按本文生成前端与对应接口;不写像素级样式,
+- 用途:与 [proposal.md](proposal.md)、[data-model.md](data-model.md) 一起构成 v2 的全部需求。按本文生成前端与对应接口;不写像素级样式,
   布局只写信息分区与先后。
 - 依据:v1 仓库 `guiziyu/omniboard` f6ebc16。「来源」里的路径都相对 v1 仓库,测试文件优先;v1 归档后仍可按
   这个 commit 查。标「待核」的是代码有分支但没有测试或文档确认的意图。
@@ -19,8 +19,8 @@
   影响实盘的操作当场重输 TOTP)。v1 的 `reader` / `editor` / `admin` 行为在 v2 中原样沿用给同名角色。
 - 接入请求导出与验证结果投影:proposal §6(`omniboard.v_connector_request` 视图、直接读 `verification.v_*`)。
 - 证据原件存储:S3,按 sha256 寻址;用户可见的字段与行为不变(5.10)。
-- v2 新增、v1 没有的界面(key 录入、`hft_config` 编辑、HFT 重启、审计查看):按 proposal §5 设计,
-  不在本文。
+- v2 新增、v1 没有的界面(激活与登录、成员管理、API 令牌、交易账户与 key 录入、`hft_config` 编辑、HFT 重启、
+  审计日志、通知):见第 12 节。表结构见 [data-model.md](data-model.md)。
 
 ### 0.2 角色与可见性
 - 角色 `reader` / `editor` / `admin`(2.2)。reader 的所有写操作按钮都隐藏,服务端对写请求返回 403
@@ -89,6 +89,7 @@
 | `/w/internal/sources` | 数据来源:CMC/CoinGecko 采集与来源身份映射 | 9.5 |
 | `/w/internal/members` | 团队成员(仅 admin) | 2.7 |
 | `/w/internal/settings` | 个人设置(界面语言) | 2.9 |
+| `/w/internal/accounts`、`/w/internal/hft`、`/w/internal/audit`、`/activate` | v2 新增 | 12 |
 | 任何未知路径 | 重定向到机构目录 | — |
 
 **重定向**(都用 replace,不增加历史记录):
@@ -2426,6 +2427,170 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
     - 为空时显示 "No request has covered this leaf yet."。
 - 规则:参数格式不合法或不存在时返回 404 "Leaf not found."。
 - 来源:`src/web/components/ConnectorsView.vue`、`src/server/integration/board.ts` leafDetail、`src/server/connectors.ts`、`tests/integration-requests.test.ts`
+
+## 12 v2 新增界面
+
+> 依据 proposal §4–§5 与 [data-model.md](data-model.md)。本节没有 v1 来源;验收以本节和对应的浏览器用例为准。
+> 相关裁决(D1–D7,2026-09-29 已定)见 data-model.md 文末。
+
+### 12.1 角色
+- 四级,依次包含:`reader` ⊂ `editor` ⊂ `trader` ⊂ `admin`。`reader` / `editor` / `admin` 的 v1 行为不变(2.2)。
+- `trader`:editor 的全部权限,加上交易账户(12.7)与 HFT 配置(12.8、12.9)。admin 同样拥有这些权限。
+- **影响实盘的操作**:新建账户、改账户标签或白名单、轮换 key、停用账户、保存 HFT 配置、发起 HFT 重启或停止。
+  每次都要当场重新输入 TOTP(12.4),写审计(12.10),并给 owner 发通知(12.11)。
+- 服务端对这类操作的权限不足返回 403「This action requires the trader role.」;通过 agent 令牌调用返回 403
+  「This action requires an interactive session.」。
+
+### 12.2 激活账号(邀请链接)
+- 入口:admin 新建成员或重置 TOTP 时生成的一次性链接 `/activate?token=…`,72 小时有效。链接失效、已用或不存在时显示
+  「This link has expired or was already used. Ask an administrator for a new one.」。
+- 步骤(同一页面,按顺序出现,不能跳过):
+  1. 设密码:密码与确认,12–200 字符。重置 TOTP 的链接(`purpose=reset`)跳过这一步。
+  2. 绑定验证器:显示二维码和可复制的密钥文本(issuer `Omniboard`,账号为邮箱),输入 6 位验证码确认。错误时
+     「The code is incorrect. Check the time on your phone and try again.」。
+  3. 恢复码:显示 10 个一次性恢复码,提供复制与下载 `.txt`。勾选「I have saved these codes」后才能继续。
+- 完成后直接登录进入机构目录;链接作废。离开页面未完成时,链接仍有效到过期。
+
+### 12.3 登录
+- 取代 2.1 的 v1 登录表单。字段:邮箱、密码、验证码(6 位,`inputmode=numeric`,`autocomplete=one-time-code`)。
+  验证码框旁有「Use a recovery code」,切换为恢复码输入。
+- 任何一项不对都只显示「Email, password or code is incorrect.」,不说明是哪一项。
+- 同一账号连续失败 5 次锁定 15 分钟,期间显示「Too many attempts. Try again after {time}.」,并通知 owner;
+  同一 IP 每分钟最多 20 次登录请求,超过返回 429。
+- 成功后:该成员原有的会话立即失效(另一台设备下次请求得到 401,回到登录页);会话 8 小时后过期,不续期。
+- 用恢复码登录成功后,顶部提示「You used a recovery code. N codes left.」;少于 3 个时提示去设置页重新生成。
+- `status=disabled` 的成员登录同样只显示通用错误。
+- 其余行为(停在原深链、401 回登录页、切换账号清缓存)沿用 2.1。
+
+### 12.4 当场确认(step-up)
+- 影响实盘的操作在最后一步弹出对话框「Confirm with your authenticator code」:显示操作摘要(一句话,例如
+  「Rotate the key of Binance_hft-01」)和 6 位验证码输入框。
+- 验证码与业务请求一起提交,服务端在同一请求里校验;不发放「确认后几分钟内免输」的凭据。
+- 同一个验证码(同一时间片)只能用一次,登录用过的也不能再用于确认。错误时对话框保留,显示
+  「The code is incorrect.」;连续错 5 次按 12.3 锁定账号并结束会话。
+- 恢复码不能用于 step-up。
+
+### 12.5 团队成员页(取代 2.7)
+- 入口与权限同 2.7(仅 admin)。
+- 列表列:Member、Email、Role、Status(Invited / Active / Disabled)、Last login。按创建时间升序。
+- 「Add member」:Name(必填,≤80)、Email(必填,唯一)、Role(四级,各附一句说明)。提交后显示一次性邀请链接和
+  复制按钮,说明「Send this link to the member. It expires in 72 hours and is shown only once.」。不再有初始密码。
+- 每行的操作菜单:
+  - Change role:选择新角色后确认。
+  - Disable / Enable:停用时立即结束其会话并吊销其全部 agent 令牌。
+  - Reset authenticator:成员状态变为需重新绑定,结束其会话,生成 `purpose=reset` 的邀请链接(显示方式同上)。
+    原密码保留。
+  - Sign out everywhere:结束其会话。
+  - Resend invite:仅 Invited 状态;旧链接作废。
+- 规则:
+  - 不能改自己的角色、不能停用自己。
+  - 至少保留一个 Active 的 admin;违反时返回 409「At least one active administrator is required.」。
+  - 所有操作写审计;涉及 trader / admin 角色的变更通知 owner。
+  - 邮箱已存在返回 409「This email is already registered.」(同 v1)。
+
+### 12.6 设置页新增:安全与 API 令牌
+在 2.9 的 Language 卡片下方增加两张卡片。
+
+**Security**
+- Change password:当前密码、新密码、确认;成功后结束其他会话(本会话保留)。
+- Regenerate recovery codes:需输入验证码;旧码全部作废,新码显示方式同 12.2 第 3 步。
+- 显示剩余恢复码数量。
+
+**API tokens**(agent 用,proposal §5)
+- 列表:Name、Role、Created、Expires、Last used、状态(Active / Expired / Revoked)。
+- 「Create token」:Name(必填,≤80)、Role(不高于自己的角色;`trader` 不可选,token 最高为 `editor`,admin 可选 `admin`)、
+  Expires(7 / 30 / 90 天,默认 30)。创建后只显示一次明文令牌和复制按钮。
+- Revoke:确认后立即失效。
+- admin 在成员页每个成员的详情里能看到并吊销其令牌。
+- 令牌用法:`Authorization: Bearer <token>`;不带 Cookie;不受 Origin 校验(2.1)约束;受同样的角色与可见性规则约束;
+  写审计时 `via=agent_token`。
+
+### 12.7 交易账户(`/w/internal/accounts`)
+- 入口:侧栏新分组「Trading」下的「Accounts」,trader 与 admin 可见;其他角色访问返回 404,侧栏不显示。
+- **列表**:
+  - 列:Account(`account_name`,下方小字 `auth_id`)、Exchange、Status、Trading system、Other tags、IP whitelist(条数)、
+    Owner、Key(指纹前 8 位,或「Entered before v2」)、Last change(来自审计,「—」表示 v2 之前)。
+  - Status 由标签派生,按优先级取第一个:Terminated → Read-only → Test → Initializing → Live。
+  - 筛选:Exchange、Status、Trading system、文本搜索(账户名、Owner)。默认隐藏 Terminated,开关「Show terminated」。
+  - 没有任何密钥明文或部分明文出现在列表、详情、审计、日志中。
+- **详情抽屉**(点行打开,`?account=<auth_id>`):
+  - 全部字段、标签原样 JSON(折叠,供核对)、`verified_auth_tags` 与更新时间(只读,Omnitra 写入;为空时不显示)。
+  - 本账户的审计记录,时间倒序。
+  - 关联的 Onboarding 记录(`accountRef = account_name` 的记录),链接到机构的 onboarding 标签页。
+  - 操作按钮:Edit、Rotate key、Terminate。Terminated 的账户只保留查看。
+- **新建账户**(「Add account」,对话框):
+  - Exchange:下拉,取值见 data-model 5.1。
+  - Account name:必填,去掉首尾空白后非空;下方实时预览 `auth_id`。
+  - Trading system:Quant / HFT / None。
+  - Account type:Live / Test / Read-only(单选,对应不加标签 / `Test` / `ReadOnly`)。
+  - Other tags:Unified、Low-latency account、Arbitrage account、Additional leverage risk limits、Initializing(复选);
+    VIP level、Market maker level(0–255 整数,可空);Portfolio group、Client name(文本,可空)。
+  - IP whitelist:每行一个 IPv4 / IPv6 地址;「Add known egress IP」按钮从 `known_egress_ips` 选择。Test 以外必填。
+  - API key、API secret(必填)、Passphrase(可空):密码型输入框,`autocomplete=off`,不进草稿(2.12),提交后立即清空。
+  - Link onboarding record(可选):列出 `resourceType=api_credentials`、venue 与所选 Exchange 匹配、尚未 granted 的
+    Onboarding 记录。选中后,保存时同一事务给该记录写新版本:`resourceStage=granted`、`accountRef=account_name`
+    (proposal §5)。
+  - Owner:文本,可空。
+  - 保存 → 12.4 确认 → 成功后关闭并打开新账户的详情。
+- **Edit**:可改 Trading system、Account type、Other tags、IP whitelist、Owner;Exchange 与 Account name 只读。
+  保存前显示改前 / 改后对照(只列有变化的字段),再进入 12.4。
+- **Rotate key**:输入新的 API key、secret、passphrase(三项一起替换);说明「The old key stops working for our
+  systems immediately. Revoke it on the exchange after the new key is confirmed.」。成功后指纹更新。
+- **Terminate**:输入账户名确认;加 `Terminated` 标签。说明「Trading systems stop using this account on their next
+  reload. This does not revoke the key on the exchange.」。
+- **校验**(前端与服务端相同,见 data-model 5.1):
+  - 可交易账户(不是 Test / Read-only / Terminated)必须选 Trading system。
+  - 重复 `auth_id` → 409「This account already exists.」。
+  - 白名单某行不是 IP → 行内提示「Not a valid IP address.」。
+  - DB 约束拒绝时显示「The database rejected this change: {约束名}」,并保持对话框内容不丢。
+
+### 12.8 HFT 配置(`/w/internal/hft`)
+- 入口:侧栏「Trading」下的「HFT config」,trader 与 admin 可见,其他角色 404。
+- **列表**:每个 channel 一张卡片,显示 portfolio group、max active groups、三个组合级上限、组覆盖条数、`update_at`。
+- **Channel 页**(`?channel=<name>`):
+  - 顶部提示:「Changes take effect after HFT restarts. The running process keeps the limits it started with.」
+    第二批有 launcher 后,若 `update_at` 晚于当前进程启动时间,显示醒目的「Changed · restart required」(D4)。
+  - 组合级字段:Portfolio group、Max active groups、Max portfolio gross exposure (USD)、Max portfolio |net| exposure (USD)、
+    Max wallet gross / assets ratio。每个字段旁有约束说明(data-model 5.2)。
+  - 组覆盖表:Prediction group、Max gross exposure (USD)、Max |net| exposure (USD);可增、改、删行;Prediction group 输入框
+    提示已有组名,也可以新填。没有覆盖的组使用 channel 默认值,表下注明这一点。
+  - 保存:显示改前 / 改后对照(含组覆盖的新增、删除、修改),→ 12.4 → 一个事务写入(data-model 5.2)。
+  - 数值按完整精度显示与输入,不做紧凑缩写。
+- 「Add channel」:填写全部组合级字段,新建一行。不提供删除 channel。
+- 409:保存时发现 `update_at` 与打开时不同,提示「This channel changed since you opened it. Reload to see the latest
+  values.」,不覆盖。
+
+### 12.9 HFT 重启(第二批,依赖 `hft-launcher`)
+- 位置:Channel 页顶部的「Process」卡片。
+- 内容:当前进程(来自最新一条 `done` 的 restart 请求):PID、Run mode、Build(12 位 + dirty 标记)、Started;
+  没有时显示「Process state unknown」。下方列出最近 10 条请求及其状态和原因。
+- 「Restart」:必须显式选择 Run mode(Read-only / Live / De-risk only,无默认值);显示提示「Check that the previous
+  de-risk run has finished.」(proposal §10,不作硬门槛)→ 12.4 → 写一条 pending 请求。
+- 「Stop」:确认后 → 12.4 → 写一条 pending 请求。
+- 同一 channel 已有 pending / running 请求时两个按钮禁用,显示该请求的进度。
+- 请求状态:pending「Waiting for launcher」→ running「Restarting」→ done / rejected(显示 launcher 写回的原因)/ failed。
+  页面在有未完成请求时每 5 秒刷新一次。
+
+### 12.10 审计日志(`/w/internal/audit`)
+- 入口:侧栏 Administration 下的「Audit log」,仅 admin。
+- 列表:Time、Actor(令牌调用时加「via token <name>」)、Action(可读标签)、Target、Step-up(✓)、Notification
+  (Sent / Failed / —)。时间倒序,每页 50 条。
+- 筛选:Actor、Action 类别(Accounts / HFT / Members / Tokens / Login)、Target 文本、时间范围。筛选写在 URL query。
+- 展开一行显示改前 / 改后字段对照;密钥列只显示「changed」。
+- 只读,没有删除或编辑入口。
+
+### 12.11 通知邮件
+- 收件人:owner(`OMNIBOARD_NOTIFY_TO`,可多个)。触发:12.1 列出的影响实盘的操作、成员角色涉及 trader / admin 的变更、
+  停用成员、重置验证器、登录锁定。
+- 内容:操作人、时间(UTC)、动作、目标、改前 / 改后摘要(不含密钥)、审计链接。标题前缀 `[Omniboard]`。
+- 发送在事务提交之后;失败不回滚业务操作,在审计里记为 Failed(D5)。
+
+### 12.12 导航与路由增补
+- 侧栏在 Connectors 之后新增分组「Trading」:Accounts、HFT config(trader / admin 可见)。Administration 分组增加
+  Audit log(admin)。
+- 路由增补:`/activate`(未登录可访问)、`/w/internal/accounts`(`?account=`)、`/w/internal/hft`(`?channel=`)、
+  `/w/internal/audit`。
+- 面包屑页名增补:Accounts、HFT config、Audit log。
 
 ## 附录 A 批量导入规则(v1 为 CLI;v2 由 agent API 承接)
 

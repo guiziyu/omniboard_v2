@@ -2,7 +2,8 @@
 
 - 状态:**Proposal**。owner 已裁决 §10 所列各项(2026-09-28、09-29)。
 - 用途:v2 的架构边界与需求输入,按本文生成代码。改判的条目要在本文标注,不静默改。
-- 前端功能与交互:[frontend-spec.md](frontend-spec.md),与本文一起构成 v2 的全部需求。
+- 前端功能与交互:[frontend-spec.md](frontend-spec.md);表结构与授权:[data-model.md](data-model.md)。
+  三份一起构成 v2 的全部需求。
 - v1:<https://github.com/guiziyu/omniboard>(Neo 上 `/home/ubuntu/omniboard`,f6ebc16),
   切换前保持可打开,用于逐页对照。
 - 长期方向:quant `docs/vision/product.md`(Omnitra Platform)。本文只取 v2 需要的部分,不照搬。
@@ -80,7 +81,7 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 |---|---|
 | 入口 | 所有账号**强制 TOTP**,不限 IP,不加网关。登录限频,连续失败锁定;session 8 小时,新登录踢掉其他设备 |
 | 应用角色 | `reader` / `editor` / `trader` / `admin` 四级,按人授予,不按职位。影响实盘的操作(写 key、改账户标签、改 `hft_config`、重启 HFT)要 `trader`,并**当场重新输入 TOTP**。改前改后与操作人写入审计表,和业务写入同一事务;审计表只追加。这类操作同时发邮件通知 owner:入口不限 IP,这是低成本的发现手段 |
-| DB 角色 | `omniboard_app` 拥有 schema `omniboard`,对 quant 控制表**按列**授权:`api_key`/`api_secret`/`api_pass` 只授 INSERT/UPDATE,不授 SELECT。v2 被攻破也读不出已有 key。无 DDL;设连接数上限与 `statement_timeout` |
+| DB 角色 | schema `omniboard` 归 migrator 所有,`omniboard_app` 只有 DML(**2026-09-29 改判**,原写「`omniboard_app` 拥有 schema」与「无 DDL」冲突;data-model §2)。`omniboard_app` 对 quant 控制表**按列**授权:`api_key`/`api_secret`/`api_pass` 只授 INSERT/UPDATE,不授 SELECT。v2 被攻破也读不出已有 key。无 DDL;设连接数上限与 `statement_timeout` |
 | 运行时 | 硬风控上限放在 `omniboard_app` 写不到的地方。交易 key 必须在交易所侧绑定 IP 白名单(Neo 的 EIP),且不开提现权限:这是最后一道防线,泄露的 key 在别处不可用 |
 
 **必须先堵的坑**:authentication 快照只要有一行映射失败就整体拒收(quant `docs/context/database.md`
@@ -146,6 +147,8 @@ Rust 解析端同规则,坏行写不进去。运行时「整体拒收」的安�
 - 9-28 裁决的改判记录。
 - `docs/hft-config-rollout.md` 与 `docs/production-ssh.md`:trader 经 v2 发起即为授权;
   启动改用 release 二进制。
+- `hft_config` 真值改为数据库:YAML(`hft-lp-gavin-cross.yaml`)退役,`sync_hft_config` 改为只读对比
+  (不再 `--apply`),否则会覆盖界面改动(data-model D2)。
 - `hft-launcher`。
 - authentication 约束 DDL,由 owner 执行。
 
@@ -181,7 +184,9 @@ owner 已定:由 agent 经 API 逐条导入,顺便实测 agent 交互。
    - 原件先上传并核对 sha256,再写引用它的记录。
 3. **明确不迁移的内容**:
    - 机器采集的 CMC/CoinGecko 排名历史(原始 HTML 与各批观测):v2 重新采集,历史留在 tarball 存档;
-   - v1 的编辑历史、审计与系统时间戳;
+   - v1 的编辑历史与审计;
+   - 系统时间戳原则上不迁移。例外:迁移期内 admin 令牌可经导入接口写入 `created_at` / `updated_at`,
+     保住「按更新时间排序」(2026-09-29,data-model D6);切换后关闭。
    - session;
    - 密码哈希:成员在 v2 重新设密码并绑定 TOTP。
 4. **对账**:脚本按表比对 v1 快照与 v2 的行数和关键字段,差异为零才切换。对账结果不以 agent 的自述为准。
@@ -203,6 +208,9 @@ owner 已定:由 agent 经 API 逐条导入,顺便实测 agent 交互。
   行情凭据(OKX VIP、Databento)仍走 Neo 的 `.env`。
 
 **2026-09-29**
+- data-model.md D1–D7 全部按建议执行:schema 归 migrator;`hft_config` 以库为真值、YAML 退役;
+  `TradingSystem` 只对可交易账户要求恰好一个;第一批 HFT 页只给固定的「重启后生效」提示;通知走 AWS SES;
+  迁移期允许写系统时间戳;只读角色不含身份与会话表。
 - 前端功能与交互写成 frontend-spec.md,之后按文档生成代码。
 - 先在 Neo 上跑(只监听本机,SSH 隧道访问),再部署到正式机;应用须能在任何满足前置条件的 arm64 机器上跑。
 
