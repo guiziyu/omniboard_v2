@@ -141,7 +141,7 @@ test('database constraints reject rows quant would refuse, for every writer', as
   });
 });
 
-test('trading accounts: roles, step-up, create with onboarding link, edit, rotate, terminate', async (t) => {
+test('trading accounts: roles, create with onboarding link, edit, rotate, terminate', async (t) => {
   const h = await harness();
   const admin = new pg.Client({ connectionString: h.db.adminUrl });
   await admin.connect();
@@ -166,10 +166,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
   }
   const trader = members.trader!;
   const as = (who: { cookie: string }) => ({ cookie: who.cookie });
-  const code = () => {
-    h.tick();
-    return h.code(trader.secret);
-  };
   const newAccount = (extra: Record<string, unknown> = {}) => ({
     exchange: 'Bitget',
     accountName: 'bitget-lp-01',
@@ -186,7 +182,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
   assert.equal((await request('GET', '/api/accounts', as(members.editor!))).statusCode, 404);
   const editorCreate = await request('POST', '/api/accounts', as(members.editor!), {
     ...newAccount(),
-    code: '000000',
   });
   assert.equal(editorCreate.statusCode, 403);
   assert.equal(editorCreate.json().message, 'This action requires the trader role.');
@@ -201,35 +196,25 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
     { bearer: token },
     {
       ...newAccount(),
-      code: '000000',
     },
   );
   assert.equal(byToken.statusCode, 403);
   assert.equal(byToken.json().message, 'This action requires an interactive session.');
 
-  // 校验在当场确认之前:输错不消耗验证码。
+  // 与前端相同的校验。
   const badIp = await request('POST', '/api/accounts', as(trader), {
     ...newAccount({ ipWhitelist: ['52.1.2.3', '52.1.2.0/24'] }),
-    code: code(),
   });
   assert.equal(badIp.statusCode, 422);
   assert.match(badIp.json().message, /line 2: Not a valid IP address/);
   const noIp = await request('POST', '/api/accounts', as(trader), {
     ...newAccount({ ipWhitelist: [] }),
-    code: code(),
   });
   assert.equal(noIp.statusCode, 422);
   const retired = await request('POST', '/api/accounts', as(trader), {
     ...newAccount({ exchange: 'CoinEx' }),
-    code: code(),
   });
   assert.equal(retired.statusCode, 422);
-  const wrongCode = await request('POST', '/api/accounts', as(trader), {
-    ...newAccount(),
-    code: '000000',
-  });
-  assert.equal(wrongCode.statusCode, 403);
-  assert.equal(wrongCode.json().message, 'The code is incorrect.');
 
   // Onboarding 记录:venue 与交易所匹配、未 granted 的 api_credentials 才可选。
   const org = (
@@ -272,7 +257,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
   const created = await request('POST', '/api/accounts', as(trader), {
     ...newAccount(),
     onboardingRecordId: recordId,
-    code: code(),
   });
   assert.equal(created.statusCode, 200, created.body);
   const authId = created.json().authId as string;
@@ -296,7 +280,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
   assert.equal(record.structured.accountRef, 'bitget-lp-01');
   const duplicate = await request('POST', '/api/accounts', as(trader), {
     ...newAccount(),
-    code: code(),
   });
   assert.equal(duplicate.statusCode, 409);
   assert.equal(duplicate.json().message, 'This account already exists.');
@@ -327,7 +310,8 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
       "SELECT step_up, notify_required, actor_id FROM omniboard.audit_event WHERE action = 'auth.create'",
     )
   ).rows[0];
-  assert.deepEqual([event.step_up, event.notify_required], [true, true]);
+  // 当场确认暂缓(frontend-spec 12.4 TODO):step_up 记为 false,仍标记需通知 owner。
+  assert.deepEqual([event.step_up, event.notify_required], [false, true]);
 
   // 编辑:只写有变化的字段,每类变化一条审计;打开后被别人改过就拒绝。
   const base = {
@@ -340,7 +324,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
     settings: settings({ type: 'test', vipLevel: 2 }),
     ipWhitelist: ['52.1.2.3', '2001:db8::1'],
     owner: 'Lv',
-    code: code(),
   });
   assert.equal(edited.statusCode, 200, edited.body);
   detail = await detailOf();
@@ -354,7 +337,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
     settings: settings(),
     ipWhitelist: ['52.1.2.3'],
     owner: 'Lv',
-    code: code(),
   });
   assert.equal(stale.statusCode, 409);
   assert.equal(stale.json().message, 'This account has changed. Reopen it and try again.');
@@ -373,7 +355,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
     settings: settings({ type: 'test', vipLevel: 2 }),
     ipWhitelist: [],
     owner: 'Lv',
-    code: code(),
   });
   assert.equal(whitelistOnly.statusCode, 200, whitelistOnly.body);
   const afterWhitelist = (
@@ -397,7 +378,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
     settings: settings({ type: 'test', vipLevel: 2 }),
     ipWhitelist: [],
     owner: 'blocked',
-    code: code(),
   });
   assert.equal(rejected.statusCode, 422);
   assert.equal(
@@ -410,7 +390,6 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
     apiKey: 'key-two',
     apiSecret: 'secret-two',
     apiPass: '',
-    code: code(),
   });
   assert.equal(rotated.statusCode, 200, rotated.body);
   const keys = (
@@ -430,12 +409,10 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
   // 停用:必须输入账户名;之后只能查看。
   const mistyped = await request('POST', `/api/accounts/${authId}/terminate`, as(trader), {
     accountName: 'bitget-lp',
-    code: code(),
   });
   assert.equal(mistyped.statusCode, 422);
   const terminated = await request('POST', `/api/accounts/${authId}/terminate`, as(trader), {
     accountName: 'bitget-lp-01',
-    code: code(),
   });
   assert.equal(terminated.statusCode, 200, terminated.body);
   detail = await detailOf();
@@ -448,23 +425,16 @@ test('trading accounts: roles, step-up, create with onboarding link, edit, rotat
     apiKey: 'k',
     apiSecret: 's',
     apiPass: '',
-    code: code(),
   });
   assert.equal(afterTerminate.statusCode, 409);
 
-  // 同一个验证码只能用一次。
-  h.tick();
-  const once = h.code(trader.secret);
-  const first = await request('POST', '/api/accounts', as(trader), {
-    ...newAccount({ accountName: 'bitget-lp-02' }),
-    code: once,
-  });
-  assert.equal(first.statusCode, 200, first.body);
-  const reused = await request('POST', '/api/accounts', as(trader), {
-    ...newAccount({ accountName: 'bitget-lp-03' }),
-    code: once,
-  });
-  assert.equal(reused.statusCode, 403);
+  const second = await request(
+    'POST',
+    '/api/accounts',
+    as(trader),
+    newAccount({ accountName: 'bitget-lp-02' }),
+  );
+  assert.equal(second.statusCode, 200, second.body);
 
   // 已知出口 IP:admin 维护,trader 读取。
   assert.equal(

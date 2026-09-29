@@ -81,7 +81,7 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 | 层 | 规则 |
 |---|---|
 | 入口 | 所有账号**强制 TOTP**,不限 IP,不加网关。登录限频,连续失败锁定;session 8 小时,新登录踢掉其他设备 |
-| 应用角色 | `reader` / `editor` / `trader` / `admin` 四级,按人授予,不按职位。影响实盘的操作(写 key、改账户标签、改 `hft_config`、重启 HFT)要 `trader`,并**当场重新输入 TOTP**。改前改后与操作人写入审计表,和业务写入同一事务;审计表只追加。这类操作同时发邮件通知 owner:入口不限 IP,这是低成本的发现手段(TODO,低优先级,见 data-model D5) |
+| 应用角色 | `reader` / `editor` / `trader` / `admin` 四级,按人授予,不按职位。影响实盘的操作(写 key、改账户标签、改 `hft_config`、重启 HFT)要 `trader`,并**当场重新输入 TOTP**(TODO,低优先级:2026-09-29 暂缓,先只要求 trader 的登录会话,令牌不行;frontend-spec 12.4)。改前改后与操作人写入审计表,和业务写入同一事务;审计表只追加。这类操作同时发邮件通知 owner:入口不限 IP,这是低成本的发现手段(TODO,低优先级,见 data-model D5) |
 | DB 角色 | schema `omniboard` 归 migrator 所有,`omniboard_app` 只有 DML(**2026-09-29 改判**,原写「`omniboard_app` 拥有 schema」与「无 DDL」冲突;data-model §2)。`omniboard_app` 对 quant 控制表**按列**授权:`api_key`/`api_secret`/`api_pass` 只授 INSERT/UPDATE,不授 SELECT。v2 被攻破也读不出已有 key。无 DDL;设连接数上限与 `statement_timeout` |
 | 运行时 | 硬风控上限放在 `omniboard_app` 写不到的地方。交易 key 必须在交易所侧绑定 IP 白名单(Neo 的 EIP),且不开提现权限:这是最后一道防线,泄露的 key 在别处不可用 |
 
@@ -216,6 +216,7 @@ owner 已定:由 agent 经 API 逐条导入,顺便实测 agent 交互。
 - quant 删除 `TradingSystem` 账户标签(全系统只有 HFT 一个交易系统),D3 作废;HFT 成员只看
   `PortfolioGroup` + 账户可交易。
 - 先在 Neo 上跑(只监听本机,SSH 隧道访问),再部署到正式机;应用须能在任何满足前置条件的 arm64 机器上跑。
+- 影响实盘的操作暂不要求当场重输 TOTP(低优先级 TODO,frontend-spec 12.4);登录仍强制 TOTP。
 - 应用不依赖任何云厂商的服务:证据原件改存 PG(§2);通知邮件不用 SES,发送功能暂缓(低优先级 TODO,D5)。
 
 ## 11. 翻案条件

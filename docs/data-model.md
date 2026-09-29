@@ -292,7 +292,7 @@ CREATE TABLE omniboard.audit_event (
   target_key   text NOT NULL,     -- 如 auth_id、channel
   before       jsonb,             -- 密钥列一律写成 {"changed": true} / 不出现,不写值
   after        jsonb,
-  step_up      boolean NOT NULL,  -- 是否当场重新输入了 TOTP
+  step_up      boolean NOT NULL,  -- 是否当场重新输入了 TOTP(影响实盘的操作暂不要求,目前写 false;frontend-spec 12.4)
   notify_required boolean NOT NULL  -- 需要通知 owner(frontend-spec 12.11;发送是 TODO,目前只标记)
 );
 ```

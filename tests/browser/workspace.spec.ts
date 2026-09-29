@@ -16,8 +16,6 @@ async function nextCode(page: Page): Promise<string> {
   return codeAt(secret, lastStep);
 }
 test('workspace access pages', async ({ page }) => {
-  // 每次当场确认要一个新的 30 秒时间片(nextCode),交易账户一步就要等几个时间片。
-  test.setTimeout(240_000);
   const { inviteToken } = JSON.parse(readFileSync('test-results/browser-state.json', 'utf8'));
 
   await test.step('activation: password, authenticator, recovery codes', async () => {
@@ -1176,7 +1174,7 @@ test('workspace access pages', async ({ page }) => {
     await expect(page.getByRole('row', { name: /Tia Trader/ })).toContainText('trader');
   });
 
-  await test.step('trading accounts: add with step-up, review edit, rotate, terminate', async () => {
+  await test.step('trading accounts: add, review edit, rotate, terminate', async () => {
     await page.getByRole('link', { name: 'Accounts' }).click();
     await expect(page.getByRole('heading', { name: 'Accounts', level: 1 })).toBeVisible();
     await expect(page.getByText('No matching accounts.')).toBeVisible();
@@ -1206,10 +1204,6 @@ test('workspace access pages', async ({ page }) => {
     await add.getByLabel('API key').fill('browser-key-1');
     await add.getByLabel('API secret').fill('browser-secret-1');
     await add.getByRole('button', { name: 'Save' }).click();
-    const confirm = page.getByRole('dialog', { name: 'Confirm with your authenticator code' });
-    await expect(confirm.getByText('Add the account Binance_binance-lp-01')).toBeVisible();
-    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
-    await confirm.getByRole('button', { name: 'Confirm' }).click();
     await expect(page).toHaveURL(/account=Binance_binance-lp-01/);
     const drawer = page.getByRole('dialog', { name: 'binance-lp-01' });
     await expect(drawer.locator('dt:text-is("Portfolio group") + dd')).toHaveText('lp-browser');
@@ -1219,7 +1213,7 @@ test('workspace access pages', async ({ page }) => {
     const firstKey = await key.textContent();
     await expect(page.getByText('browser-key-1')).toHaveCount(0);
 
-    // 编辑:先看改前 / 改后对照,再当场确认。
+    // 编辑:先看改前 / 改后对照再保存;从对照页返回时表单内容保留。
     await drawer.getByRole('button', { name: 'Edit' }).click();
     const edit = page.getByRole('dialog', { name: 'Edit binance-lp-01' });
     await edit.getByLabel('Test', { exact: true }).check();
@@ -1229,23 +1223,20 @@ test('workspace access pages', async ({ page }) => {
     await expect(review.getByRole('row', { name: 'Account type Live Test' })).toBeVisible();
     await expect(review.getByRole('row', { name: 'Owner — Browser Owner' })).toBeVisible();
     await expect(review.getByRole('row')).toHaveCount(3);
-    await review.getByRole('button', { name: 'Continue' }).click();
-    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
-    await confirm.getByRole('button', { name: 'Confirm' }).click();
+    await review.getByRole('button', { name: 'Back' }).click();
+    await expect(edit.getByLabel('Owner')).toHaveValue('Browser Owner');
+    await edit.getByRole('button', { name: 'Review changes' }).click();
+    await review.getByRole('button', { name: 'Save changes' }).click();
+    await expect(review).toBeHidden();
     await expect(drawer.locator('dt:text-is("Status") + dd')).toHaveText('Test');
     await expect(drawer.getByRole('cell', { name: 'Owner changed' })).toBeVisible();
 
-    // 轮换:验证码错误时确认框保留。
+    // 轮换:三项一起替换,指纹更新。
     await drawer.getByRole('button', { name: 'Rotate key' }).click();
     const rotate = page.getByRole('dialog', { name: 'Rotate key' });
     await rotate.getByLabel('New API key').fill('browser-key-2');
     await rotate.getByLabel('New API secret').fill('browser-secret-2');
     await rotate.getByRole('button', { name: 'Rotate key' }).click();
-    await confirm.getByLabel('6-digit code').fill('000000');
-    await confirm.getByRole('button', { name: 'Confirm' }).click();
-    await expect(confirm.getByRole('alert')).toHaveText('The code is incorrect.');
-    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
-    await confirm.getByRole('button', { name: 'Confirm' }).click();
     await expect(rotate).toBeHidden();
     await expect(key).not.toHaveText(firstKey!);
 
@@ -1256,8 +1247,6 @@ test('workspace access pages', async ({ page }) => {
     await expect(terminateButton).toBeDisabled();
     await terminate.getByLabel('Type binance-lp-01 to confirm').fill('binance-lp-01');
     await terminateButton.click();
-    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
-    await confirm.getByRole('button', { name: 'Confirm' }).click();
     await expect(drawer.locator('dt:text-is("Status") + dd')).toHaveText('Terminated');
     await expect(drawer.getByRole('button', { name: 'Edit' })).toHaveCount(0);
     await page.keyboard.press('Escape');

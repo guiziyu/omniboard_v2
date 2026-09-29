@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { atLeast, problem, stepUp, type AuthContext } from './auth';
+import { atLeast, problem, type AuthContext } from './auth';
 import { audit, type AuditAction } from './audit';
 import { requireInteractive, requireRole } from './access';
 import { tx, type Client, type Pool } from './db';
@@ -30,7 +30,8 @@ import {
   type OnboardingLink,
 } from '../shared/accounts';
 // 交易账户(frontend-spec 12.7、data-model 5.1):写 quant 的 management.authentication。密钥列只写不读;
-// 影响实盘的操作要 trader、当场确认(12.4),与审计、指纹、Onboarding 记录同一事务提交(proposal §5)。
+// 影响实盘的操作要 trader 的登录会话(当场确认 12.4 暂缓,TODO),与审计、指纹、Onboarding 记录同一事务提交
+// (proposal §5)。
 
 const TABLE = 'management.authentication';
 const fingerprint = (apiKey: string) =>
@@ -156,7 +157,6 @@ async function markGranted(
 
 // ---- 输入 ----
 const secret = z.string().trim().min(1).max(10000);
-const code = z.string().max(10);
 const settingsInput = z
   .object({
     type: z.enum(['live', 'test', 'read-only']),
@@ -173,7 +173,7 @@ const settingsInput = z
   .strict();
 const whitelistInput = z.array(z.string().trim().min(1).max(64)).max(50);
 const ownerInput = z.string().trim().max(100);
-/** 与前端相同的规则;在当场确认之前检查,输错不会白白消耗验证码。 */
+/** 与前端相同的规则。 */
 function checkSettings(settings: AccountSettings, whitelist: string[]) {
   const problemText = settingsProblem(settings);
   if (problemText) problem(422, problemText);
@@ -245,7 +245,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
   const liveWrite = (request: FastifyRequest, action: AuditAction) => ({
     actor: request.actor,
     targetTable: TABLE,
-    stepUp: true,
+    stepUp: false, // 当场确认暂缓(frontend-spec 12.4 TODO)
     notify: true,
     action,
   });
@@ -332,12 +332,10 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
         apiSecret: secret,
         apiPass: z.string().trim().max(10000),
         onboardingRecordId: z.string().min(1).max(100).optional(),
-        code,
       })
       .strict()
       .parse(request.body);
     checkSettings(input.settings, input.ipWhitelist);
-    await stepUp(ctx, request.user.id, input.code);
     const authId = authIdOf(input.exchange, input.accountName);
     const tags = tagsOf(input.settings);
     const whitelist = unique(input.ipWhitelist);
@@ -401,12 +399,10 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
         settings: settingsInput,
         ipWhitelist: whitelistInput,
         owner: ownerInput,
-        code,
       })
       .strict()
       .parse(request.body);
     checkSettings(input.settings, input.ipWhitelist);
-    await stepUp(ctx, request.user.id, input.code);
     await write(pool, async (client) => {
       const current = await lockAccount(client, authId);
       if (
@@ -459,10 +455,9 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
     requireLiveWrite(request);
     const { authId } = request.params as { authId: string };
     const input = z
-      .object({ apiKey: secret, apiSecret: secret, apiPass: z.string().trim().max(10000), code })
+      .object({ apiKey: secret, apiSecret: secret, apiPass: z.string().trim().max(10000) })
       .strict()
       .parse(request.body);
-    await stepUp(ctx, request.user.id, input.code);
     await write(pool, async (client) => {
       await lockAccount(client, authId);
       await client.query(
@@ -485,19 +480,13 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
     requireLiveWrite(request);
     const { authId } = request.params as { authId: string };
     const input = z
-      .object({ accountName: z.string().max(100), code })
+      .object({ accountName: z.string().max(100) })
       .strict()
       .parse(request.body);
-    const found = await pool.query<{ name: string }>(
-      'SELECT account_name AS name FROM management.authentication WHERE auth_id = $1',
-      [authId],
-    );
-    if (!found.rowCount) problem(404, 'Account not found.');
-    if (input.accountName !== found.rows[0]!.name)
-      problem(422, 'Type the account name exactly to confirm.');
-    await stepUp(ctx, request.user.id, input.code);
     await write(pool, async (client) => {
       const current = await lockAccount(client, authId);
+      if (input.accountName !== current.accountName)
+        problem(422, 'Type the account name exactly to confirm.');
       const tags = sortTags([...current.tags, 'Terminated']);
       await client.query(
         'UPDATE management.authentication SET account_tags = $2 WHERE auth_id = $1',

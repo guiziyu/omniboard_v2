@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 新建与编辑交易账户的表单(frontend-spec 12.7)。校验与服务端共用 shared/accounts;通过后交给页面做
-// 改前 / 改后对照与当场确认。密钥输入不进草稿,由页面在提交后清空。
+// 新建与编辑交易账户的表单(frontend-spec 12.7)。校验与服务端共用 shared/accounts;通过后交给页面
+// (编辑先做改前 / 改后对照)。密钥输入不进草稿,由页面在提交后清空。
 import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 import {
@@ -23,7 +23,13 @@ export type AccountDraft = {
   onboardingRecordId: string;
 };
 export type Secrets = { apiKey: string; apiSecret: string; apiPass: string };
-const props = defineProps<{ account?: AccountDetail; busy?: boolean; error?: string }>();
+const props = defineProps<{
+  account?: AccountDetail;
+  /** 从对照页返回或保存失败时,恢复上次填的内容。 */
+  draft?: AccountDraft;
+  busy?: boolean;
+  error?: string;
+}>();
 const secrets = defineModel<Secrets>('secrets', { required: true });
 const emit = defineEmits<{ save: [draft: AccountDraft]; close: [] }>();
 const editing = !!props.account;
@@ -38,20 +44,21 @@ const form = ref<{
 }>({
   exchange: props.account?.exchange ?? '',
   accountName: props.account?.accountName ?? '',
-  settings: initial ?? {
-    type: 'live',
-    portfolioGroup: '',
-    initializing: false,
-    unified: false,
-    lowLatency: false,
-    arbitrage: false,
-    additionalLeverage: false,
-    vipLevel: null,
-    marketMakerLevel: null,
-    clientName: '',
-  },
-  whitelist: (props.account?.ipWhitelist ?? []).join('\n'),
-  owner: props.account?.owner ?? '',
+  settings: props.draft?.settings ??
+    initial ?? {
+      type: 'live',
+      portfolioGroup: '',
+      initializing: false,
+      unified: false,
+      lowLatency: false,
+      arbitrage: false,
+      additionalLeverage: false,
+      vipLevel: null,
+      marketMakerLevel: null,
+      clientName: '',
+    },
+  whitelist: (props.draft?.ipWhitelist ?? props.account?.ipWhitelist ?? []).join('\n'),
+  owner: props.draft?.owner ?? props.account?.owner ?? '',
   onboardingRecordId: '',
 });
 const options = ref<AccountOptions>({ egressIps: [], portfolioGroups: [], onboarding: [] });

@@ -58,5 +58,7 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
 - `capital_scenarios`(data-model §3.3)在 v1 只有接口、没有页面,前端规格也没有对应界面,暂不移植;活动历史里
   v1 导入的 scenario 事件照常跳到 Capital Optimization 标签页。
 - 其他待办:HFT 配置与重启(12.8、12.9)、v2 新页面的中文与韩文译文。
+- TODO(低优先级):影响实盘的操作当场重输验证码(frontend-spec 12.4、proposal §4)。目前只要求 trader 的登录会话;
+  登录仍强制 TOTP,重新生成恢复码仍要输验证码。
 - TODO(低优先级):通知邮件(frontend-spec 12.11、data-model D5)。发送通道未定,已写好的 outbox 先移除;
   需要通知的审计事件仍标记 `notify_required`。

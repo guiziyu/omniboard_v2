@@ -1,12 +1,11 @@
 <script setup lang="ts">
-// 交易账户(frontend-spec 12.7):trader 与 admin。影响实盘的操作(新建、编辑、轮换、停用)最后一步当场确认
-// (12.4);验证码错误时确认框保留,其他错误回到原对话框且内容不丢。密钥输入提交后清空,界面从不显示密钥。
+// 交易账户(frontend-spec 12.7):trader 与 admin。影响实盘的操作(新建、编辑、轮换、停用)直接提交,当场确认
+// (12.4)暂缓;出错时留在原对话框且内容不丢。密钥输入提交后清空,界面从不显示密钥。
 import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { ApiError, api, errorText, session } from '../api';
+import { api, errorText, session } from '../api';
 import { formatTime } from '../format';
 import AppDialog from '../components/AppDialog.vue';
-import StepUpDialog from '../components/StepUpDialog.vue';
 import AccountForm, { type AccountDraft, type Secrets } from '../components/AccountForm.vue';
 import {
   authIdOf,
@@ -110,44 +109,20 @@ const actionLabel: Record<string, string> = {
 const compact = (value: unknown) =>
   value === null || value === undefined ? '—' : JSON.stringify(value);
 
-// ---- 当场确认 ----
+// ---- 提交 ----
 const secrets = ref<Secrets>({ apiKey: '', apiSecret: '', apiPass: '' });
 const clearSecrets = () => (secrets.value = { apiKey: '', apiSecret: '', apiPass: '' });
-const step = ref<{
-  summary: string;
-  run: (code: string) => Promise<void>;
-  fail: (m: string) => void;
-} | null>(null);
-const stepBusy = ref(false);
-const stepError = ref('');
-function confirmWith(
-  summary: string,
-  run: (code: string) => Promise<void>,
-  fail: (m: string) => void,
-) {
-  stepError.value = '';
-  step.value = { summary, run, fail };
-}
-async function confirmStep(code: string) {
-  if (!step.value) return;
-  stepBusy.value = true;
-  stepError.value = '';
-  const current = step.value;
+const busy = ref(false);
+/** 提交一次影响实盘的操作;不论成败都清空密钥输入(12.7),错误交给原对话框显示。 */
+async function submit(run: () => Promise<void>, fail: (message: string) => void) {
+  busy.value = true;
   try {
-    await current.run(code);
-    step.value = null;
-    clearSecrets();
+    await run();
   } catch (e) {
-    // 验证码错或被锁定:确认框保留;其他错误回到原对话框。
-    if (e instanceof ApiError && (e.message === 'The code is incorrect.' || e.status === 429))
-      stepError.value = e.message;
-    else {
-      step.value = null;
-      clearSecrets();
-      current.fail(errorText(e));
-    }
+    fail(errorText(e));
   } finally {
-    stepBusy.value = false;
+    clearSecrets();
+    busy.value = false;
   }
 }
 
@@ -157,9 +132,8 @@ const addError = ref('');
 function add(draft: AccountDraft) {
   addError.value = '';
   const authId = authIdOf(draft.exchange, draft.accountName);
-  confirmWith(
-    `Add the account ${authId}`,
-    async (code) => {
+  void submit(
+    async () => {
       await api('/api/accounts', {
         method: 'POST',
         body: {
@@ -170,7 +144,6 @@ function add(draft: AccountDraft) {
           owner: draft.owner,
           ...secrets.value,
           ...(draft.onboardingRecordId ? { onboardingRecordId: draft.onboardingRecordId } : {}),
-          code,
         },
       });
       adding.value = false;
@@ -184,6 +157,8 @@ function add(draft: AccountDraft) {
 // ---- 编辑:先看改前 / 改后,再确认 ----
 const editing = ref<AccountDetail | null>(null);
 const editError = ref('');
+/** 编辑表单上次的内容:从对照页返回或保存失败后恢复。 */
+const lastDraft = ref<AccountDraft | undefined>();
 const review = ref<{
   draft: AccountDraft;
   rows: { field: string; before: string; after: string }[];
@@ -228,14 +203,14 @@ function reviewEdit(draft: AccountDraft) {
     return;
   }
   editError.value = '';
+  lastDraft.value = draft;
   review.value = { draft, rows };
 }
 function saveEdit() {
   const account = editing.value!;
   const draft = review.value!.draft;
-  confirmWith(
-    `Save changes to ${account.authId}`,
-    async (code) => {
+  void submit(
+    async () => {
       await api(`/api/accounts/${encodeURIComponent(account.authId)}`, {
         method: 'PATCH',
         body: {
@@ -247,7 +222,6 @@ function saveEdit() {
           settings: draft.settings,
           ipWhitelist: draft.ipWhitelist,
           owner: draft.owner,
-          code,
         },
       });
       review.value = null;
@@ -268,12 +242,11 @@ const rotateError = ref('');
 function rotate() {
   const account = detail.value!;
   rotateError.value = '';
-  confirmWith(
-    `Rotate the key of ${account.authId}`,
-    async (code) => {
+  void submit(
+    async () => {
       await api(`/api/accounts/${encodeURIComponent(account.authId)}/rotate`, {
         method: 'POST',
-        body: { ...secrets.value, code },
+        body: secrets.value,
       });
       rotating.value = false;
       await load();
@@ -288,12 +261,11 @@ const terminateError = ref('');
 function terminate() {
   const account = detail.value!;
   terminateError.value = '';
-  confirmWith(
-    `Terminate ${account.authId}`,
-    async (code) => {
+  void submit(
+    async () => {
       await api(`/api/accounts/${encodeURIComponent(account.authId)}/terminate`, {
         method: 'POST',
-        body: { accountName: terminateName.value, code },
+        body: { accountName: terminateName.value },
       });
       terminating.value = false;
       terminateName.value = '';
@@ -479,6 +451,7 @@ async function saveEgress() {
             :disabled="!!detail.tagsError"
             @click="
               editError = '';
+              lastDraft = undefined;
               editing = detail;
             "
           >
@@ -542,9 +515,10 @@ async function saveEgress() {
       </template>
     </AppDialog>
 
-    <AppDialog v-if="adding" title="Add account" wide @close="adding = false">
+    <AppDialog v-if="adding" title="Add account" wide :busy="busy" @close="adding = false">
       <AccountForm
         v-model:secrets="secrets"
+        :busy="busy"
         :error="addError"
         @save="add"
         @close="adding = false"
@@ -560,12 +534,13 @@ async function saveEgress() {
       <AccountForm
         v-model:secrets="secrets"
         :account="editing"
+        :draft="lastDraft"
         :error="editError"
         @save="reviewEdit"
         @close="editing = null"
       />
     </AppDialog>
-    <AppDialog v-if="review" title="Review changes" @close="review = null">
+    <AppDialog v-if="review" title="Review changes" :busy="busy" @close="review = null">
       <table>
         <thead>
           <tr>
@@ -583,12 +558,12 @@ async function saveEgress() {
         </tbody>
       </table>
       <div class="actions">
-        <button type="button" class="ghost" @click="review = null">Back</button>
-        <button type="button" @click="saveEdit">Continue</button>
+        <button type="button" class="ghost" :disabled="busy" @click="review = null">Back</button>
+        <button type="button" :disabled="busy" @click="saveEdit">Save changes</button>
       </div>
     </AppDialog>
 
-    <AppDialog v-if="rotating && detail" title="Rotate key" @close="rotating = false">
+    <AppDialog v-if="rotating && detail" title="Rotate key" :busy="busy" @close="rotating = false">
       <form autocomplete="off" @submit.prevent="rotate">
         <p>
           The old key stops working for our systems immediately. Revoke it on the exchange after the
@@ -608,13 +583,20 @@ async function saveEgress() {
         <input id="r-pass" v-model="secrets.apiPass" type="password" autocomplete="off" />
         <p v-if="rotateError" class="error" role="alert">{{ rotateError }}</p>
         <div class="actions">
-          <button type="button" class="ghost" @click="rotating = false">Cancel</button>
-          <button type="submit">Rotate key</button>
+          <button type="button" class="ghost" :disabled="busy" @click="rotating = false">
+            Cancel
+          </button>
+          <button type="submit" :disabled="busy">Rotate key</button>
         </div>
       </form>
     </AppDialog>
 
-    <AppDialog v-if="terminating && detail" title="Terminate account" @close="terminating = false">
+    <AppDialog
+      v-if="terminating && detail"
+      title="Terminate account"
+      :busy="busy"
+      @close="terminating = false"
+    >
       <form @submit.prevent="terminate">
         <p>
           Trading systems stop using this account on their next reload. This does not revoke the key
@@ -624,8 +606,14 @@ async function saveEgress() {
         <input id="t-name" v-model="terminateName" autocomplete="off" required />
         <p v-if="terminateError" class="error" role="alert">{{ terminateError }}</p>
         <div class="actions">
-          <button type="button" class="ghost" @click="terminating = false">Cancel</button>
-          <button type="submit" class="danger" :disabled="terminateName !== detail.accountName">
+          <button type="button" class="ghost" :disabled="busy" @click="terminating = false">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="danger"
+            :disabled="busy || terminateName !== detail.accountName"
+          >
             Terminate
           </button>
         </div>
@@ -650,14 +638,5 @@ async function saveEgress() {
         </div>
       </form>
     </AppDialog>
-
-    <StepUpDialog
-      v-if="step"
-      :summary="step.summary"
-      :busy="stepBusy"
-      :error="stepError"
-      @confirm="confirmStep"
-      @close="step = null"
-    />
   </section>
 </template>

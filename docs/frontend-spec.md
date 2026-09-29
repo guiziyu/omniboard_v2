@@ -16,7 +16,7 @@
 本文记录 v1 用户可见的功能与交互。下列机制由 proposal 取代,相关条目已标注,v2 按 proposal 实现:
 
 - 登录、会话、成员与角色:proposal §4(强制 TOTP、`reader` / `editor` / `trader` / `admin` 四级、
-  影响实盘的操作当场重输 TOTP)。v1 的 `reader` / `editor` / `admin` 行为在 v2 中原样沿用给同名角色。
+  影响实盘的操作当场重输 TOTP,暂缓,见 12.4 的 TODO)。v1 的 `reader` / `editor` / `admin` 行为在 v2 中原样沿用给同名角色。
 - 接入请求导出与验证结果投影:proposal §6(`omniboard.v_connector_request` 视图、直接读 `verification.v_*`)。
 - 证据原件存储:PG,按 sha256 寻址;用户可见的字段与行为不变(5.10)。
 - v2 新增、v1 没有的界面(激活与登录、成员管理、API 令牌、交易账户与 key 录入、`hft_config` 编辑、HFT 重启、
@@ -2438,7 +2438,7 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 - 四级,依次包含:`reader` ⊂ `editor` ⊂ `trader` ⊂ `admin`。`reader` / `editor` / `admin` 的 v1 行为不变(2.2)。
 - `trader`:editor 的全部权限,加上交易账户(12.7)与 HFT 配置(12.8、12.9)。admin 同样拥有这些权限。
 - **影响实盘的操作**:新建账户、改账户标签或白名单、轮换 key、停用账户、保存 HFT 配置、发起 HFT 重启或停止。
-  每次都要当场重新输入 TOTP(12.4),写审计(12.10),并给 owner 发通知(12.11)。
+  每次都要当场重新输入 TOTP(12.4,暂缓),写审计(12.10),并给 owner 发通知(12.11,暂缓)。
 - 服务端对这类操作的权限不足返回 403「This action requires the trader role.」;通过 agent 令牌调用返回 403
   「This action requires an interactive session.」。
 
@@ -2464,6 +2464,11 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 - 其余行为(停在原深链、401 回登录页、切换账号清缓存)沿用 2.1。
 
 ### 12.4 当场确认(step-up)
+
+**TODO(低优先级):影响实盘的操作暂不要求当场确认。** 2026-09-29 决定先去掉:12.7–12.9 里「→ 12.4」这一步
+跳过,操作直接提交;仍然只有 trader / admin 的登录会话能做,令牌不行;审计的 `step_up` 记为 false。
+补上时按下面的规格。设置页重新生成恢复码(12.6)照旧要输验证码,用的就是这套校验。
+
 - 影响实盘的操作在最后一步弹出对话框「Confirm with your authenticator code」:显示操作摘要(一句话,例如
   「Rotate the key of Binance_hft-01」)和 6 位验证码输入框。
 - 验证码与业务请求一起提交,服务端在同一请求里校验;不发放「确认后几分钟内免输」的凭据。
@@ -2540,9 +2545,9 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
     Onboarding 记录。选中后,保存时同一事务给该记录写新版本:`resourceStage=granted`、`accountRef=account_name`
     (proposal §5)。
   - Owner:文本,可空。
-  - 保存 → 12.4 确认 → 成功后关闭并打开新账户的详情。
+  - 保存(12.4 暂缓)→ 成功后关闭并打开新账户的详情。
 - **Edit**:可改 Account type、Portfolio group、Other tags、IP whitelist、Owner;Exchange 与 Account name 只读。
-  保存前显示改前 / 改后对照(只列有变化的字段),再进入 12.4。打开后账户被别人改过时,保存返回 409
+  保存前显示改前 / 改后对照(只列有变化的字段),确认后保存(12.4 暂缓)。打开后账户被别人改过时,保存返回 409
   「This account has changed. Reopen it and try again.」。
 - **Rotate key**:输入新的 API key、secret、passphrase(三项一起替换);说明「The old key stops working for our
   systems immediately. Revoke it on the exchange after the new key is confirmed.」。成功后指纹更新。
