@@ -2,7 +2,7 @@ import pg from 'pg';
 import type { Pool } from './db';
 import { id, tx } from './db';
 import { Problem, problem } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import { knownExchangeOrganization } from './exchange-identities';
 import { parsePage, sources } from './source-pages';
 import { webSources, type WebSourceId } from '../shared/sources';
@@ -68,7 +68,6 @@ export async function waitForCollections(): Promise<void> {
  */
 export async function startCollection(
   pool: Pool,
-  store: EvidenceStore,
   source: WebSourceId,
   options: { fetcher?: Fetcher; limit?: number; log?: Log } = {},
 ): Promise<{ runId: string; done: Promise<void> }> {
@@ -83,7 +82,7 @@ export async function startCollection(
       problem(409, 'A collection is already running.');
     throw error;
   }
-  const done = execute(pool, store, runId, source, options).catch((error: unknown) =>
+  const done = execute(pool, runId, source, options).catch((error: unknown) =>
     options.log?.error(error),
   );
   activeJobs.add(done);
@@ -93,7 +92,6 @@ export async function startCollection(
 
 async function execute(
   pool: Pool,
-  store: EvidenceStore,
   runId: string,
   source: WebSourceId,
   { fetcher = fetchPage, limit = 50, log }: { fetcher?: Fetcher; limit?: number; log?: Log },
@@ -103,7 +101,7 @@ async function execute(
     const page = await fetcher(config.url);
     // 原文先存:失败的批次也能在活动表里打开原文。
     await tx(pool, async (client) => {
-      const evidenceId = await saveEvidence(client, store, page.bytes, {
+      const evidenceId = await saveEvidence(client, page.bytes, {
         source,
         url: config.url,
         contentType: page.contentType,
@@ -192,7 +190,6 @@ async function execute(
  */
 export async function dailyCollection(
   pool: Pool,
-  store: EvidenceStore,
   now: number,
   options: { fetcher?: Fetcher; log?: Log } = {},
 ): Promise<WebSourceId | null> {
@@ -210,7 +207,7 @@ export async function dailyCollection(
     const last = latest.rows.find((r) => r.source === source)?.started_at;
     if (last && now - last.getTime() < 86_400_000) continue;
     try {
-      await startCollection(pool, store, source, options);
+      await startCollection(pool, source, options);
     } catch (error) {
       // 与手动采集撞上时跳过这一分钟。
       if (error instanceof Problem && error.statusCode === 409) return null;

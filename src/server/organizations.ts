@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Client, Pool } from './db';
 import { id, tx } from './db';
 import { problem, type Role, type User } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import { tagIds, type OrganizationTag } from '../shared/tags';
 import {
   choosePoint,
@@ -468,7 +468,6 @@ export type MetricInput = z.infer<typeof metricInput>;
 /** 添加团队观测(frontend-spec 9.3):原文存为证据,观测只追加;同来源同期间的新值取代旧值显示。 */
 export async function recordMetric(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   organizationId: string,
   input: Omit<MetricInput, 'capturedAt'>,
@@ -496,7 +495,6 @@ export async function recordMetric(
   return tx(pool, async (client) => {
     const evidenceId = await saveEvidence(
       client,
-      store,
       Buffer.from(input.rawText),
       {
         source: 'manual',

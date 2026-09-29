@@ -46,7 +46,6 @@ import {
 import { deliverPending, type Sender } from './notifications';
 import { expectedVersion, schemaVersion } from './migrate';
 import { requireInteractive, requireRole } from './access';
-import type { EvidenceStore } from './evidence';
 import { registerOrganizationRoutes } from './organization-routes';
 import { registerKnowledgeRoutes } from './knowledge-routes';
 import { registerWorkRoutes } from './work-routes';
@@ -59,7 +58,6 @@ export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
   /** 证据原件存储(data-model §1)。 */
-  evidence: EvidenceStore;
   origin: string;
   now?: () => number;
   logger?: boolean;
@@ -386,7 +384,7 @@ export async function buildApp(options: AppOptions) {
     });
   });
 
-  const deps = { pool: options.pool, store: options.evidence, now: ctx.now };
+  const deps = { pool: options.pool, now: ctx.now };
   registerOrganizationRoutes(app, deps);
   registerKnowledgeRoutes(app, deps);
   registerWorkRoutes(app, deps);

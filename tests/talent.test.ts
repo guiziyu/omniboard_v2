@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { bootstrapAdmin } from '../src/server/auth';
 import { contactHref, defaultsFor, validateKnowledge } from '../src/shared/knowledge';
 import type { TalentDetail, TalentDirectory } from '../src/shared/talent';
-import { harness, tokenOf } from './helpers';
+import { harness, original, tokenOf } from './helpers';
 // 人才目录(frontend-spec 6.9–6.11)。v1 tests/talent.test.ts 的前四个用例与 tests/wechat-contact.test.ts;
 // 全局搜索、讨论、情报与新行业标签的用例属于其他章节,随各自批次移植(讨论已在 discussion.test.ts)。
 // v1 直接写库造出「没有人员档案的旧记录」,这里同样直接插入;经 API 保存的记录会自动建档案(6.4)。
@@ -54,7 +54,7 @@ async function setup(t: { after: (fn: () => Promise<void>) => void }) {
       `INSERT INTO omniboard.evidence
          (id, source, url, sha256, byte_length, content_type, parser_version, filename, visibility)
        VALUES ($1,'manual','',$2,0,'text/plain','manual-v1','reference.txt',$3)`,
-      ['evidence-' + key, '0'.repeat(64), options.rawVisibility ?? 'team'],
+      ['evidence-' + key, await original(pool), options.rawVisibility ?? 'team'],
     );
     await pool.query(
       `INSERT INTO omniboard.module_records

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Client, Pool } from './db';
 import { id, tx } from './db';
 import { problem, type User } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import { ensurePersonDossier } from './person-dossier';
 import { records } from './records';
 import { event } from './operation-log';
@@ -78,7 +78,6 @@ export async function checkReference(
 /** 原文优先存为新证据;否则沿用所选记录的原文;两者都没有 → 422。 */
 export async function evidence(
   client: Client,
-  store: EvidenceStore,
   organizationId: string,
   access: Access,
   user: User,
@@ -86,7 +85,7 @@ export async function evidence(
 ): Promise<string> {
   const record = await checkReference(client, input.sourceRecordId, organizationId, access, user);
   if (input.rawText)
-    return saveEvidence(client, store, Buffer.from(input.rawText), {
+    return saveEvidence(client, Buffer.from(input.rawText), {
       source: 'manual',
       url: input.sourceUrl,
       contentType: 'text/plain; charset=utf-8',
@@ -490,7 +489,6 @@ async function referenceOrganization(
 }
 export async function addClaim(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   objectId: string,
   input: z.infer<typeof claimInput>,
@@ -510,7 +508,7 @@ export async function addClaim(
     );
     if (!obj.organizations?.some((o) => o.id === contextOrg))
       problem(422, 'Link this identity to the organization before adding its evidence.');
-    const evidenceId = await evidence(client, store, contextOrg, obj.visibility, user, input);
+    const evidenceId = await evidence(client, contextOrg, obj.visibility, user, input);
     const claimId = id();
     await client.query(
       `INSERT INTO omniboard.knowledge_claims
@@ -610,7 +608,6 @@ export const relationInput = z
   .strict();
 export async function addRelation(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   input: z.infer<typeof relationInput>,
 ): Promise<{ id: string }> {
@@ -633,7 +630,7 @@ export async function addRelation(
       !to.organizations?.some((o) => o.id === contextOrg)
     )
       problem(422, 'Use evidence from an organization associated with these identities.');
-    const evidenceId = await evidence(client, store, contextOrg, from.visibility, user, input);
+    const evidenceId = await evidence(client, contextOrg, from.visibility, user, input);
     const relationId = id();
     await client.query(
       `INSERT INTO omniboard.knowledge_relations
@@ -668,7 +665,6 @@ export async function addRelation(
 /** 每个身份决定都记下理由、操作人、时间和独立的决定证据,并使对象 revision +1。 */
 async function identityDecision(
   client: Client,
-  store: EvidenceStore,
   user: User,
   obj: KnowledgeObject,
   kind: IdentityHistory['kind'],
@@ -679,7 +675,6 @@ async function identityDecision(
 ) {
   const evidenceId = await saveEvidence(
     client,
-    store,
     Buffer.from(JSON.stringify({ kind, identityId: obj.id, otherId, recordId, reason }, null, 2)),
     {
       source: 'manual',
@@ -719,7 +714,6 @@ export const linkInput = z
   .strict();
 export async function linkIdentityRecord(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   objectId: string,
   input: z.infer<typeof linkInput>,
@@ -750,7 +744,6 @@ export async function linkIdentityRecord(
     );
     await identityDecision(
       client,
-      store,
       user,
       obj,
       'link',
@@ -772,20 +765,18 @@ export const mergeInput = z
 /** 把 other 合并进 target(target 保留);只有同类型、同可见性的身份能合并。 */
 export async function mergeIdentities(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   targetId: string,
   input: z.infer<typeof mergeInput>,
 ): Promise<{ id: string }> {
   return tx(pool, async (client) => {
     await lockKnowledge(client);
-    return mergeInto(client, store, user, targetId, input);
+    return mergeInto(client, user, targetId, input);
   });
 }
 /** 合并本身;调用方持有 lockKnowledge(导入个人履历时的自动合并也走这里)。 */
 export async function mergeInto(
   client: Client,
-  store: EvidenceStore,
   user: User,
   targetId: string,
   input: z.infer<typeof mergeInput>,
@@ -805,7 +796,7 @@ export async function mergeInto(
     'UPDATE omniboard.knowledge_objects SET revision = revision + 1, updated_at = now() WHERE id = $1',
     [source.id],
   );
-  await identityDecision(client, store, user, target, 'merge', input.reason, source.id);
+  await identityDecision(client, user, target, 'merge', input.reason, source.id);
   return { id: target.id };
 }
 export const undoInput = z
@@ -818,7 +809,6 @@ export const undoInput = z
 /** 撤销合并:链式合并必须先撤销后发生的那次;重复撤销 → 409。 */
 export async function undoMerge(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   targetId: string,
   input: z.infer<typeof undoInput>,
@@ -849,7 +839,6 @@ export async function undoMerge(
     );
     await identityDecision(
       client,
-      store,
       user,
       target,
       'undo_merge',
@@ -871,7 +860,6 @@ export const unlinkInput = z
 /** 取消关联:不删除记录,之后可以重新关联;对象的最后一条记录不能取消关联。 */
 export async function unlinkRecord(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   objectId: string,
   input: z.infer<typeof unlinkInput>,
@@ -889,7 +877,7 @@ export async function unlinkRecord(
       'DELETE FROM omniboard.object_records WHERE object_id = ANY($1) AND record_id = $2',
       [members, input.recordId],
     );
-    await identityDecision(client, store, user, obj, 'unlink', input.reason, null, input.recordId);
+    await identityDecision(client, user, obj, 'unlink', input.reason, null, input.recordId);
     return { id: obj.id };
   });
 }

@@ -1,7 +1,7 @@
 import type { Client, Pool } from './db';
 import { id, tx } from './db';
 import { problem, type User } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import {
   positionDriverInputSchema,
   type PositionDriver,
@@ -80,7 +80,6 @@ export async function positionDrivers(
 }
 export async function savePositionDriver(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   organizationId: string,
   positionId: string,
@@ -112,7 +111,7 @@ export async function savePositionDriver(
     // admin 情报不会因为岗位后来放宽而对外开放;可见性建立后不再改变(data-model §1)。
     const visibility: Visibility =
       p.visibility === 'admin' || current?.visibility === 'admin' ? 'admin' : 'team';
-    const evidenceId = await saveEvidence(client, store, Buffer.from(input.rawText), {
+    const evidenceId = await saveEvidence(client, Buffer.from(input.rawText), {
       source: input.data.basis === 'public_source' ? 'public_profile' : 'user_report',
       url: input.sourceUrl,
       contentType: 'text/plain; charset=utf-8',
@@ -123,7 +122,7 @@ export async function savePositionDriver(
       const bytes = Buffer.from(input.attachment.base64, 'base64');
       if (!bytes.length || bytes.length > 5_000_000)
         problem(422, 'Attachments must be between 1 byte and 5 MB.');
-      attachmentId = await saveEvidence(client, store, bytes, {
+      attachmentId = await saveEvidence(client, bytes, {
         source: 'attachment',
         url: input.sourceUrl,
         contentType: 'application/octet-stream',

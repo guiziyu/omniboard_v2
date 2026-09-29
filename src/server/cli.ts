@@ -3,8 +3,6 @@ import { appConfig, loadEnv, required } from './config';
 import { openPool } from './db';
 import { bootstrapAdmin, inviteLink } from './auth';
 import { expectedVersion, migrate, schemaVersion } from './migrate';
-import { checkStore } from './evidence';
-import { describeStore, openStore } from './evidence-store';
 const [command, ...rest] = process.argv.slice(2);
 async function main() {
   switch (command) {
@@ -15,7 +13,7 @@ async function main() {
       return;
     }
     case 'selfcheck': {
-      // deploy.sh 切换前调用:PG 连通、schema 版本一致、证据存储可写可读。
+      // deploy.sh 切换前调用:PG 连通、schema 版本一致(证据原件也在 PG 里)。
       const config = appConfig();
       const pool = openPool(config.pgUrl, 1);
       try {
@@ -26,8 +24,6 @@ async function main() {
       } finally {
         await pool.end();
       }
-      await checkStore(openStore(config.evidence));
-      console.log(`OK: evidence store writable and readable (${describeStore(config.evidence)}).`);
       return;
     }
     case 'bootstrap-admin': {

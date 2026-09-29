@@ -8,8 +8,8 @@ import {
   assertCanRead,
   evidencePreview,
   getEvidence,
+  readOriginal,
   saveEvidence,
-  type EvidenceStore,
 } from './evidence';
 import {
   canonicalId,
@@ -44,7 +44,7 @@ import {
 import { getOrganizationProfile, saveOrganizationProfile } from './profiles';
 import { tabsFor, unionTabs } from '../shared/registry';
 // 机构目录、机构、记录、指标观测与证据的接口(frontend-spec 2.6、3、5、6.2、9.2–9.3)。
-export type OrganizationDeps = { pool: Pool; store: EvidenceStore; now: () => number };
+export type OrganizationDeps = { pool: Pool; now: () => number };
 const idParam = z.object({ id: z.string().min(1).max(100) });
 /** 原件以附件或图片返回:禁止脚本,SVG 里的脚本也不执行。 */
 function sendOriginal(reply: FastifyReply, bytes: Buffer, contentType: string) {
@@ -54,7 +54,7 @@ function sendOriginal(reply: FastifyReply, bytes: Buffer, contentType: string) {
     .send(bytes);
 }
 export function registerOrganizationRoutes(app: FastifyInstance, deps: OrganizationDeps) {
-  const { pool, store } = deps;
+  const { pool } = deps;
 
   // 侧栏机构总数,排除别名机构(frontend-spec 2.3)。
   app.get('/api/summary', async () => ({ organizations: await organizationCount(pool) }));
@@ -135,7 +135,7 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
         if (importFields.some((field) => input[field] !== undefined))
           await requireImport(pool, request);
         const org = await getOrganization(pool, id, request.user.role);
-        const saved = await saveRecord(pool, store, request.user, org, tab, recordId, input);
+        const saved = await saveRecord(pool, request.user, org, tab, recordId, input);
         return reply
           .code(saved.created ? 201 : 200)
           .send({ id: saved.id, revision: saved.revision });
@@ -151,7 +151,7 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
     const { id, recordId } = positionParam.parse(request.params);
     const input = relationshipInput.parse(request.body);
     const org = await getOrganization(pool, id, request.user.role);
-    return moveRelationship(pool, store, request.user, org.id, recordId, input);
+    return moveRelationship(pool, request.user, org.id, recordId, input);
   });
   // 合并关系的迁移导入(data-model §3.2、§3.3):只在导入窗口内由 admin 令牌写入。
   app.post('/api/import/organization-aliases', async (request, reply) => {
@@ -187,7 +187,7 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
       await canonicalId(pool, idParam.parse(request.params).id),
     );
     reply.header('Cache-Control', 'private, max-age=86400');
-    return sendOriginal(reply, await store.get(logo.sha256), logo.content_type);
+    return sendOriginal(reply, await readOriginal(pool, logo.sha256), logo.content_type);
   });
   const logoInput = z
     .object({
@@ -216,7 +216,6 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
     const { capturedAt, ...input } = metricInput.parse(request.body);
     const result = await recordMetric(
       pool,
-      store,
       request.user,
       idParam.parse(request.params).id,
       input,
@@ -255,7 +254,7 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
     if (info.visibility === 'admin') requireRole(request, 'admin');
     const at = await importedTime(pool, request, capturedAt);
     const evidenceId = await tx(pool, (client) =>
-      saveEvidence(client, store, Buffer.from(contentBase64, 'base64'), info, {
+      saveEvidence(client, Buffer.from(contentBase64, 'base64'), info, {
         id,
         sha256,
         capturedAt: at,
@@ -266,7 +265,7 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
   app.get('/api/evidence/:id', async (request) => {
     const evidence = await getEvidence(pool, idParam.parse(request.params).id);
     assertCanRead(evidence, request.user.role);
-    return evidencePreview(store, evidence);
+    return evidencePreview(pool, evidence);
   });
   app.get('/api/evidence/:id/download', async (request, reply) => {
     const evidence = await getEvidence(pool, idParam.parse(request.params).id);
@@ -275,6 +274,10 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
       'Content-Disposition',
       `attachment; filename="reference"; filename*=UTF-8''${encodeURIComponent(evidence.filename)}`,
     );
-    return sendOriginal(reply, await store.get(evidence.sha256), 'application/octet-stream');
+    return sendOriginal(
+      reply,
+      await readOriginal(pool, evidence.sha256),
+      'application/octet-stream',
+    );
   });
 }

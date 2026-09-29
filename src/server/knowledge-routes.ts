@@ -32,7 +32,7 @@ import { explorationTasks } from './work';
 // 关系与证据的接口(frontend-spec 7)。读取任何角色可用,写入要 editor 以上。
 const idParam = z.object({ id: z.string().min(1).max(200) });
 export function registerKnowledgeRoutes(app: FastifyInstance, deps: OrganizationDeps) {
-  const { pool, store } = deps;
+  const { pool } = deps;
   const today = () => new Date(deps.now()).toISOString().slice(0, 10);
 
   app.get('/api/organizations/:id/exploration', async (request) => {
@@ -59,14 +59,13 @@ export function registerKnowledgeRoutes(app: FastifyInstance, deps: Organization
   app.post('/api/knowledge/objects/:id/records', async (request) => {
     requireRole(request, 'editor');
     const input = linkInput.parse(request.body);
-    return linkIdentityRecord(pool, store, request.user, idParam.parse(request.params).id, input);
+    return linkIdentityRecord(pool, request.user, idParam.parse(request.params).id, input);
   });
   app.post('/api/knowledge/objects/:id/claims', async (request, reply) => {
     requireRole(request, 'editor');
     const input = claimInput.parse(request.body);
     const saved = await addClaim(
       pool,
-      store,
       request.user,
       idParam.parse(request.params).id,
       input,
@@ -82,7 +81,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, deps: Organization
   app.post('/api/knowledge/relations', async (request, reply) => {
     requireRole(request, 'editor');
     const input = relationInput.parse(request.body);
-    return reply.code(201).send(await addRelation(pool, store, request.user, input));
+    return reply.code(201).send(await addRelation(pool, request.user, input));
   });
   app.get('/api/knowledge/identities', async (request) =>
     identitySearch(pool, request.user, searchInput.parse(request.query)),
@@ -93,17 +92,17 @@ export function registerKnowledgeRoutes(app: FastifyInstance, deps: Organization
   app.post('/api/knowledge/identities/:id/merge', async (request) => {
     requireRole(request, 'editor');
     const input = mergeInput.parse(request.body);
-    return mergeIdentities(pool, store, request.user, idParam.parse(request.params).id, input);
+    return mergeIdentities(pool, request.user, idParam.parse(request.params).id, input);
   });
   app.post('/api/knowledge/identities/:id/undo', async (request) => {
     requireRole(request, 'editor');
     const input = undoInput.parse(request.body);
-    return undoMerge(pool, store, request.user, idParam.parse(request.params).id, input);
+    return undoMerge(pool, request.user, idParam.parse(request.params).id, input);
   });
   app.post('/api/knowledge/identities/:id/unlink', async (request) => {
     requireRole(request, 'editor');
     const input = unlinkInput.parse(request.body);
-    return unlinkRecord(pool, store, request.user, idParam.parse(request.params).id, input);
+    return unlinkRecord(pool, request.user, idParam.parse(request.params).id, input);
   });
   registerKnowledgeImport(app, pool);
 }

@@ -3,7 +3,6 @@ import { openPool } from './db';
 import { buildApp } from './app';
 import { expectedVersion, schemaVersion } from './migrate';
 import { deliverPending } from './notifications';
-import { describeStore, openStore } from './evidence-store';
 import { dailyCollection, recoverRuns } from './collect';
 const config = appConfig();
 const pool = openPool(config.pgUrl);
@@ -26,20 +25,13 @@ if (!locked.rows[0]!.ok) {
 }
 // 持有锁后,上次遗留的采集运行不可能还在跑(frontend-spec 9.7)。
 await recoverRuns(pool);
-const evidence = openStore(config.evidence);
 const app = await buildApp({
   pool,
   totpKey: config.totpKey,
-  evidence,
   origin: config.origin,
   logger: true,
   development: config.development,
 });
-// 生产的原件只放 S3(proposal §2:应用机器不存数据)。
-if (!config.development && 'dir' in config.evidence)
-  app.log.warn(
-    `Evidence originals are stored in the ${describeStore(config.evidence)}. Set OMNIBOARD_EVIDENCE_BUCKET in production.`,
-  );
 // 通知通道(SES,D5)尚未接入:sender 为 undefined,事件记为 failed。每分钟补投一次未处理的事件。
 const sender = undefined;
 const notifyTimer = setInterval(
@@ -50,7 +42,7 @@ notifyTimer.unref();
 // 每日采集(9.7):开关在数据来源页,默认关闭。
 const collectTimer = setInterval(
   () =>
-    void dailyCollection(pool, evidence, Date.now(), { log: app.log }).catch((e: unknown) =>
+    void dailyCollection(pool, Date.now(), { log: app.log }).catch((e: unknown) =>
       app.log.error(e),
     ),
   60_000,

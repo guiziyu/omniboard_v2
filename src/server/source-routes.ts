@@ -102,13 +102,13 @@ async function importLink(client: Client, input: z.infer<typeof linkImport>): Pr
 }
 
 export function registerSourceRoutes(app: FastifyInstance, deps: SourceDeps) {
-  const { pool, store } = deps;
+  const { pool } = deps;
   app.get('/api/sources', async (request) => sourcesState(deps, request.user.role === 'admin'));
   const collectInput = z.object({ source: z.enum(webSources) }).strict();
   app.post('/api/sources/collect', async (request, reply) => {
     requireRole(request, 'admin');
     const { source } = collectInput.parse(request.body);
-    const { runId } = await startCollection(pool, store, source, {
+    const { runId } = await startCollection(pool, source, {
       fetcher: deps.fetcher,
       log: request.log,
     });

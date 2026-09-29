@@ -1,46 +1,9 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import type { Client, Pool } from './db';
 import { id } from './db';
 import { problem, type Role } from './auth';
-import { randomToken, sha256 } from './crypto';
-// 证据(data-model §3.1,frontend-spec 5.10):原件按 sha256 内容寻址,库里只存元数据。
-/** 原件存储。生产用 S3 私有桶(evidence-store.ts),键 evidence/<sha256>;开发与测试用本地目录。 */
-export interface EvidenceStore {
-  put(sha: string, bytes: Buffer, contentType: string): Promise<void>;
-  get(sha: string): Promise<Buffer>;
-}
-export function directoryStore(dir: string): EvidenceStore {
-  const path = (sha: string) => resolve(dir, 'evidence', sha);
-  return {
-    async put(sha, bytes) {
-      await mkdir(resolve(dir, 'evidence'), { recursive: true, mode: 0o700 });
-      // 先写临时文件再改名:并发写同一原件时不会读到半个文件。
-      const temp = `${path(sha)}.${randomToken().slice(0, 12)}.tmp`;
-      await writeFile(temp, bytes, { mode: 0o600 });
-      await rename(temp, path(sha));
-    },
-    async get(sha) {
-      const bytes = await readFile(path(sha)).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') problem(404, 'The original file is missing from storage.');
-        throw error;
-      });
-      return verified(sha, bytes);
-    },
-  };
-}
-/** 读回的原件必须与键里的 sha256 一致。 */
-export function verified(sha: string, bytes: Buffer): Buffer {
-  if (sha256(bytes) !== sha) throw new Error(`Evidence ${sha} failed its integrity check.`);
-  return bytes;
-}
-/** selfcheck:写入并读回一个固定的探测原件。内容寻址,重复写无害。 */
-export async function checkStore(store: EvidenceStore): Promise<void> {
-  const probe = Buffer.from('omniboard evidence store check\n');
-  const sha = sha256(probe);
-  await store.put(sha, probe, 'text/plain');
-  await store.get(sha);
-}
+import { sha256 } from './crypto';
+// 证据(data-model §3.1,frontend-spec 5.10):原件按 sha256 内容寻址存在 evidence_originals,
+// 同一原件可被多条证据引用。
 export type Visibility = 'team' | 'admin';
 export type EvidenceInfo = {
   source: string;
@@ -62,13 +25,9 @@ export type Evidence = {
   filename: string;
   visibility: Visibility;
 };
-/**
- * 保存一条证据:先写原件(幂等),再在调用方事务里写元数据。
- * 事务回滚时原件留在存储里,没有元数据引用它;同内容再次保存会复用。
- */
+/** 保存一条证据:原件(同内容复用)与元数据在调用方的同一事务里写入,一起提交或一起回滚。 */
 export async function saveEvidence(
   client: Client,
-  store: EvidenceStore,
   bytes: Buffer,
   info: EvidenceInfo,
   options: { id?: string; capturedAt?: Date; sha256?: string } = {},
@@ -76,7 +35,11 @@ export async function saveEvidence(
   const sha = sha256(bytes);
   if (options.sha256 && options.sha256 !== sha)
     problem(422, 'The uploaded content does not match the declared SHA-256.');
-  await store.put(sha, bytes, info.contentType);
+  await client.query(
+    `INSERT INTO omniboard.evidence_originals (sha256, bytes) VALUES ($1,$2)
+     ON CONFLICT (sha256) DO NOTHING`,
+    [sha, bytes],
+  );
   const evidenceId = options.id ?? id();
   const inserted = await client.query(
     `INSERT INTO omniboard.evidence
@@ -123,8 +86,17 @@ export function assertCanRead(evidence: Evidence, role: Role): void {
     problem(403, 'Administrator access is required.');
 }
 export const PREVIEW_LIMIT = 500_000;
-export async function evidencePreview(store: EvidenceStore, evidence: Evidence) {
-  const bytes = await store.get(evidence.sha256);
+/** 原件内容。外键保证每条证据都有原件,约束保证内容与 sha256 一致。 */
+export async function readOriginal(db: Pool | Client, sha: string): Promise<Buffer> {
+  const result = await db.query<{ bytes: Buffer }>(
+    'SELECT bytes FROM omniboard.evidence_originals WHERE sha256 = $1',
+    [sha],
+  );
+  if (!result.rows[0]) problem(404, 'Reference not found.');
+  return result.rows[0].bytes;
+}
+export async function evidencePreview(db: Pool | Client, evidence: Evidence) {
+  const bytes = await readOriginal(db, evidence.sha256);
   return {
     evidence,
     text: evidence.contentType.startsWith('text/')

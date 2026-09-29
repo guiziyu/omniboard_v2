@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Client, Pool } from './db';
 import { id, tx } from './db';
 import { problem, type User } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import { getOrganization } from './organizations';
 import { event, lockWork } from './operation-log';
 import {
@@ -354,7 +354,6 @@ async function writeLinks(client: Client, taskId: string, input: TaskInput) {
 /** 启动标准接入计划(10.5):幂等;全部任务从 planned 开始,不从旧记录推断已获授权或已测试。 */
 export async function startOnboarding(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   organizationId: string,
   input: z.infer<typeof startInput>,
@@ -377,7 +376,6 @@ export async function startOnboarding(
     const ids = new Map(onboardingTemplate.map((t) => [t.key, id()]));
     const evidenceId = await saveEvidence(
       client,
-      store,
       Buffer.from(
         'Omniboard standard onboarding template v1. Planning tasks only; no approvals, resources or test results are inferred.\n' +
           JSON.stringify(onboardingTemplate, null, 2),
@@ -429,7 +427,6 @@ export async function startOnboarding(
 /** 从新信息创建任务(10.6):origin 为 discovery,初始 planned。 */
 export async function createTask(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   organizationId: string,
   input: TaskInput,
@@ -446,7 +443,7 @@ export async function createTask(
       taskId,
       await taskRows(client, user, org.id),
     );
-    const evidenceId = await evidence(client, store, org.id, input.visibility, user, input);
+    const evidenceId = await evidence(client, org.id, input.visibility, user, input);
     await client.query(
       `INSERT INTO omniboard.work_tasks
          (id, organization_id, title, lane, state, origin, owner_id, description, due_on, visibility,
@@ -495,7 +492,6 @@ async function lockedTask(client: Client, user: User, taskId: string) {
 /** 编辑任务计划(10.6):可见性不可改,已完成的不能改,非 planned 的不能新增未完成前置。 */
 export async function updateTaskPlan(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   taskId: string,
   input: z.infer<typeof planInput>,
@@ -515,7 +511,7 @@ export async function updateTaskPlan(
     // 补了原文,或换了来源记录,就生成新的证据引用;只改标题等保留当前引用。
     const evidenceId =
       input.rawText || (input.sourceRecordId && input.sourceRecordId !== task.sourceRecordId)
-        ? await evidence(client, store, task.organizationId, task.visibility, user, input)
+        ? await evidence(client, task.organizationId, task.visibility, user, input)
         : task.evidenceId;
     await client.query(
       `UPDATE omniboard.work_tasks
@@ -555,7 +551,6 @@ export async function updateTaskPlan(
 /** 改状态(10.4):写一条历史,返回真正解除阻塞的直接下游与仍有前置的下游。 */
 export async function transitionTask(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   taskId: string,
   input: z.infer<typeof transitionInput>,
@@ -595,7 +590,7 @@ export async function transitionTask(
     }
     const evidenceId =
       isFinished(input.state) || input.rawText
-        ? await evidence(client, store, task.organizationId, task.visibility, user, input)
+        ? await evidence(client, task.organizationId, task.visibility, user, input)
         : task.evidenceId;
     const outcome = [
       input.outcome,
@@ -665,7 +660,6 @@ export async function transitionTask(
 /** 记录进度(10.4):状态不变,结果必填,原文另存为新证据。 */
 export async function recordTaskProgress(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   taskId: string,
   input: z.infer<typeof progressInput>,
@@ -675,7 +669,7 @@ export async function recordTaskProgress(
     if (input.revision !== task.revision)
       problem(409, 'This task changed. Reload before recording progress.');
     if (isFinished(task.state)) problem(422, 'Reopen this task before recording more progress.');
-    const evidenceId = await evidence(client, store, task.organizationId, task.visibility, user, {
+    const evidenceId = await evidence(client, task.organizationId, task.visibility, user, {
       ...input,
       rawText: input.rawText || input.outcome,
     });

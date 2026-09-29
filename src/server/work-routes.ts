@@ -22,7 +22,7 @@ import {
 const idParam = z.object({ id: z.string().min(1).max(200) });
 const feedQuery = z.object({ organizationId: z.string().max(200).default('') });
 export function registerWorkRoutes(app: FastifyInstance, deps: OrganizationDeps) {
-  const { pool, store } = deps;
+  const { pool } = deps;
   const today = () => new Date(deps.now()).toISOString().slice(0, 10);
 
   app.get('/api/work', async (request) => {
@@ -44,7 +44,6 @@ export function registerWorkRoutes(app: FastifyInstance, deps: OrganizationDeps)
     const input = startInput.parse(request.body ?? {});
     const result = await startOnboarding(
       pool,
-      store,
       request.user,
       idParam.parse(request.params).id,
       input,
@@ -54,29 +53,23 @@ export function registerWorkRoutes(app: FastifyInstance, deps: OrganizationDeps)
   app.post('/api/organizations/:id/work/tasks', async (request, reply) => {
     requireRole(request, 'editor');
     const input = taskInput.parse(request.body);
-    const created = await createTask(
-      pool,
-      store,
-      request.user,
-      idParam.parse(request.params).id,
-      input,
-    );
+    const created = await createTask(pool, request.user, idParam.parse(request.params).id, input);
     return reply.code(201).send(created);
   });
   app.patch('/api/work/tasks/:id', async (request) => {
     requireRole(request, 'editor');
     const input = planInput.parse(request.body);
-    return updateTaskPlan(pool, store, request.user, idParam.parse(request.params).id, input);
+    return updateTaskPlan(pool, request.user, idParam.parse(request.params).id, input);
   });
   app.post('/api/work/tasks/:id/actions', async (request) => {
     requireRole(request, 'editor');
     const input = transitionInput.parse(request.body);
-    return transitionTask(pool, store, request.user, idParam.parse(request.params).id, input);
+    return transitionTask(pool, request.user, idParam.parse(request.params).id, input);
   });
   app.post('/api/work/tasks/:id/updates', async (request) => {
     requireRole(request, 'editor');
     const input = progressInput.parse(request.body);
-    return recordTaskProgress(pool, store, request.user, idParam.parse(request.params).id, input);
+    return recordTaskProgress(pool, request.user, idParam.parse(request.params).id, input);
   });
   app.get('/api/work/tasks/:id/history', async (request) =>
     taskHistory(pool, request.user, idParam.parse(request.params).id),

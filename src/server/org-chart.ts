@@ -1,6 +1,6 @@
 import type { Client } from './db';
 import { problem } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import type { Visibility } from '../shared/types';
 // 组织架构图的汇报关系(frontend-spec 6.2;data-model §3.3),从 v1 src/server/org-chart.ts 迁移。
 
@@ -41,7 +41,6 @@ export async function validateReportsTo(
 /** 写入一条关系:理由存为独立证据(导入时可直接引用已上传的证据),人员自己的原文不变。 */
 export async function saveRelationship(
   client: Client,
-  store: EvidenceStore,
   recordId: string,
   input: {
     kind: 'confirmed' | 'unconfirmed';
@@ -53,7 +52,7 @@ export async function saveRelationship(
 ): Promise<string> {
   const evidenceId =
     input.evidenceId ??
-    (await saveEvidence(client, store, Buffer.from(input.note), {
+    (await saveEvidence(client, Buffer.from(input.note), {
       source: 'manual',
       url: input.sourceUrl,
       visibility: input.visibility,

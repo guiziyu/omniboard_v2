@@ -193,7 +193,7 @@ async function importProfile(client: Client, input: z.infer<typeof profileImport
 }
 
 export function registerTalentRoutes(app: FastifyInstance, deps: OrganizationDeps) {
-  const { pool, store } = deps;
+  const { pool } = deps;
   const today = () => new Date(deps.now()).toISOString().slice(0, 10);
 
   app.get('/api/talent', async (request) => talentDirectory(pool, request.user, request.query));
@@ -202,7 +202,7 @@ export function registerTalentRoutes(app: FastifyInstance, deps: OrganizationDep
   );
   app.post('/api/talent/source-profiles', async (request, reply) => {
     requireRole(request, 'editor');
-    const saved = await importPersonProfile(pool, store, request.user, request.body, today());
+    const saved = await importPersonProfile(pool, request.user, request.body, today());
     return reply.code(201).send(saved);
   });
   app.get('/api/talent/source-profiles/:id', async (request) =>
@@ -211,7 +211,7 @@ export function registerTalentRoutes(app: FastifyInstance, deps: OrganizationDep
   app.post('/api/talent/people/:id/duplicate-decision', async (request) => {
     requireRole(request, 'editor');
     const input = duplicateDecisionInput.parse(request.body);
-    return decideDuplicate(pool, store, request.user, idParam.parse(request.params).id, input);
+    return decideDuplicate(pool, request.user, idParam.parse(request.params).id, input);
   });
 
   const drivers = '/api/organizations/:id/positions/:positionId/drivers';
@@ -225,7 +225,6 @@ export function registerTalentRoutes(app: FastifyInstance, deps: OrganizationDep
     const input = positionDriverInputSchema.parse(request.body);
     const saved = await savePositionDriver(
       pool,
-      store,
       request.user,
       params.id,
       params.positionId,
@@ -242,7 +241,6 @@ export function registerTalentRoutes(app: FastifyInstance, deps: OrganizationDep
     const input = positionDriverInputSchema.parse(request.body);
     return savePositionDriver(
       pool,
-      store,
       request.user,
       params.id,
       params.positionId,

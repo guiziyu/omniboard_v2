@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Client, Pool } from './db';
 import { id, tx } from './db';
 import { problem, type Role, type User } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import { metricLabel } from '../shared/columns';
 import { validateKnowledge } from '../shared/knowledge';
 import {
@@ -225,7 +225,6 @@ export async function checkEvidence(client: Client, evidenceId: string, visibili
 /** 新建或编辑一条记录(frontend-spec 5.6 服务端规则)。 */
 export async function saveRecord(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   org: { id: string; tags: Tag[] },
   tabId: string,
@@ -357,7 +356,7 @@ export async function saveRecord(
       evidenceId = input.evidenceId;
     } else if (input.reuseReference) evidenceId = existing!.evidence_id;
     else
-      evidenceId = await saveEvidence(client, store, Buffer.from(input.rawText), {
+      evidenceId = await saveEvidence(client, Buffer.from(input.rawText), {
         source: 'manual',
         url: input.sourceUrl,
         contentType: 'text/plain; charset=utf-8',
@@ -371,7 +370,7 @@ export async function saveRecord(
       const bytes = Buffer.from(input.attachment.base64, 'base64');
       if (bytes.length > 5_000_000 || bytes.length === 0)
         problem(422, 'Attachments must be between 1 byte and 5 MB.');
-      attachmentId = await saveEvidence(client, store, bytes, {
+      attachmentId = await saveEvidence(client, bytes, {
         source: 'attachment',
         url: input.sourceUrl,
         contentType: 'application/octet-stream',
@@ -436,7 +435,7 @@ export async function saveRecord(
     // 带姓名的记录建独立人员档案(6.4);导入时 v1 的档案随共享对象一起导入,这里不自动建。
     if (!importing) await ensurePersonDossier(client, id_);
     if (relationship)
-      await saveRelationship(client, store, id_, {
+      await saveRelationship(client, id_, {
         ...relationship,
         sourceUrl: input.sourceUrl,
         visibility: input.visibility,
@@ -484,7 +483,6 @@ export const relationshipInput = z
   .strict();
 export async function moveRelationship(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   organizationId: string,
   recordId: string,
@@ -516,7 +514,7 @@ export async function moveRelationship(
     const kind = input.reportsTo ? input.relationshipKind : 'unconfirmed';
     if (current.reports_to === input.reportsTo && current.kind === kind)
       problem(422, 'Choose a different manager or relationship certainty.');
-    await saveRelationship(client, store, recordId, {
+    await saveRelationship(client, recordId, {
       kind,
       note: input.note,
       sourceUrl: input.sourceUrl,

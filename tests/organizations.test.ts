@@ -5,7 +5,7 @@ import { bootstrapAdmin } from '../src/server/auth';
 import { columnsFor } from '../src/shared/columns';
 import type { DirectoryOrganization, MetricPoint } from '../src/shared/columns';
 import { tagIds } from '../src/shared/tags';
-import { harness, tokenOf } from './helpers';
+import { harness, original, tokenOf } from './helpers';
 // 机构、目录排名、指标观测与证据(frontend-spec 2.6、3、5.10、9.1–9.3)。v1 tests/rankings.test.ts 的断言逐条保留。
 
 test('column composition follows the selected tag', () => {
@@ -263,7 +263,7 @@ test('organizations, directory ranking, metric observations and evidence', async
       await pool.query(
         `INSERT INTO omniboard.evidence (id, source, url, sha256, byte_length, content_type, parser_version, filename, visibility)
          VALUES ($1,'cmc_web','https://example.test',$2,1,'text/html','fixture','page.html','team')`,
-        [evidenceId, createHash('sha256').update(evidenceId).digest('hex')],
+        [evidenceId, await original(pool, evidenceId)],
       );
       return evidenceId;
     }

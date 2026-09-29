@@ -39,12 +39,14 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 | HFT 额度 | `management.hft_config`、`hft_group_limit` | 写;进程启动时加载后冻结,重启才生效(§5) |
 | 验证结果 | `verification.v_*` 三个视图 | 只读 |
 | 机构、情报、合规、接入进度、任务、审计、HFT 重启请求 | 同库新 schema `omniboard` | 独占 |
-| 证据原件 | S3 私有桶,按 sha256 寻址,开版本控制与加密 | 独占 |
+| 证据原件 | 同库 `omniboard.evidence_originals`,按 sha256 寻址(2026-09-29 改判,原为 S3 私有桶) | 独占 |
 
 - 与控制表同库,是为了**同一事务**:资源记录标 `granted` 与插入 key 行一起提交或一起失败。
 - `management.authentication` 的实体注释早已写明它是「legacy projection,由 access profile 取代」。
   v2 就是那个取代者。
-- 应用机器不存数据:没有 tarball、EBS 快照和本机备份脚本;备份就是 PG 备份加 S3 版本。
+- 应用机器不存数据:没有 tarball、EBS 快照和本机备份脚本;备份就是 PG 备份。
+- 原件放 PG 而不放 S3:v1 全部原件约 77 MB,每日采集一年约几百 MB;省去建桶与 IAM,原件与元数据同一事务写入,
+  备份只有一份。代价是生产库与其备份随之变大。
 - 不用 SQLite。v1 已写明「写并发或存储运维需要时迁 PostgreSQL/对象存储」,前提 1 就是这个时点。
 - v2 上线后,DBeaver 只作应急通道。§4 的 DB 约束对它同样生效,但它绕过审计。
 
@@ -66,10 +68,9 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 **新机器前置条件**(基础设施,owner 做,不在 `deploy.sh` 里):
 - Ubuntu arm64,Node LTS;
 - 安全组与 Rosseta `pg_hba` 放行到生产 PG 10.0.3.240:5433;
-- S3 证据桶的 IAM 权限(实例角色,不放长期密钥);
 - 对公网提供服务时:域名、Caddy、443 入站。
 
-`deploy.sh` 启动后自检 PG、S3 连通和 `omniboard` schema 版本,任何一项不通就不切换。
+`deploy.sh` 启动后自检 PG 连通和 `omniboard` schema 版本,任何一项不通就不切换。
 - **开发**:两个仓库都在 Neo 上开发,改契约时一个会话同批改两边。测试用测试 PG(5432),
   不连生产库;浏览器测试用 `nice -n 19` 跑,不和 HFT 抢 CPU。
 - **agent 取上下文**:Neo 上的 agent 可以读 `omniboard` schema(owner 已允许)。quant 的 agent

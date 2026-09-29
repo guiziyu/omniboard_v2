@@ -34,7 +34,7 @@ export async function organizationsWithTasks(pool: Pool, user: User) {
 }
 
 export function registerIntegrationRoutes(app: FastifyInstance, deps: OrganizationDeps) {
-  const { pool, store } = deps;
+  const { pool } = deps;
   const options = (user: User): ReadOptions => ({
     admin: user.role === 'admin',
     now: new Date(deps.now()).toISOString(),
@@ -125,7 +125,6 @@ export function registerIntegrationRoutes(app: FastifyInstance, deps: Organizati
       problem(404, 'No passed verification run with this id is attached to this organization.');
     return transitionTask(
       pool,
-      store,
       request.user,
       task.id,
       transitionInput.parse({

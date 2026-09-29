@@ -92,11 +92,10 @@ async function setup(fetcher: Fetcher = fixtures) {
     sessions[role] = (await h.activate(tokenOf(invited.json().inviteLink))).cookie;
   }
   const as = (role: string) => ({ cookie: sessions[role]! });
-  const store = h.store;
   const pool = h.db.pool;
   /** 直接调用采集并等它写完运行记录。 */
   async function collect(source: WebSourceId, options: { fetcher?: Fetcher; limit?: number } = {}) {
-    const { runId, done } = await startCollection(pool, store, source, {
+    const { runId, done } = await startCollection(pool, source, {
       fetcher: options.fetcher ?? current,
       limit: options.limit,
     });
@@ -121,7 +120,6 @@ async function setup(fetcher: Fetcher = fixtures) {
   return {
     h,
     pool,
-    store,
     as,
     collect,
     directory,
@@ -289,7 +287,7 @@ test('failed collectors and interrupted runs cannot replace the last good batch'
   // 运行期间被标为 interrupted 的批次不发布。
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
-  const { runId, done } = await startCollection(s.pool, s.store, 'coingecko_web', {
+  const { runId, done } = await startCollection(s.pool, 'coingecko_web', {
     fetcher: async (url) => {
       await gate;
       return fixtures(url);
@@ -358,7 +356,7 @@ test('sources page: roles, background collection, daily schedule', async (t) => 
 
   // 每日采集:默认关闭;打开后每次只发起一个最久未运行的来源。
   const now = Date.now();
-  assert.equal(await dailyCollection(s.pool, s.store, now, { fetcher: fixtures }), null);
+  assert.equal(await dailyCollection(s.pool, now, { fetcher: fixtures }), null);
   assert.equal(
     (await call('editor', 'POST', '/api/sources/schedule', { daily: true })).statusCode,
     403,
@@ -367,24 +365,18 @@ test('sources page: roles, background collection, daily schedule', async (t) => 
     daily: true,
   });
   assert.equal((await state('reader')).daily, true);
-  assert.equal(await dailyCollection(s.pool, s.store, now, { fetcher: fixtures }), 'coingecko_web');
+  assert.equal(await dailyCollection(s.pool, now, { fetcher: fixtures }), 'coingecko_web');
   await waitForCollections();
-  assert.equal(await dailyCollection(s.pool, s.store, now, { fetcher: fixtures }), null);
+  assert.equal(await dailyCollection(s.pool, now, { fetcher: fixtures }), null);
+  assert.equal(await dailyCollection(s.pool, now + 86_400_000, { fetcher: fixtures }), 'cmc_web');
   assert.equal(
-    await dailyCollection(s.pool, s.store, now + 86_400_000, { fetcher: fixtures }),
-    'cmc_web',
-  );
-  assert.equal(
-    await dailyCollection(s.pool, s.store, now + 86_400_000, { fetcher: fixtures }),
+    await dailyCollection(s.pool, now + 86_400_000, { fetcher: fixtures }),
     null,
     'one collection at a time',
   );
   await waitForCollections();
   await call('admin', 'POST', '/api/sources/schedule', { daily: false });
-  assert.equal(
-    await dailyCollection(s.pool, s.store, now + 3 * 86_400_000, { fetcher: fixtures }),
-    null,
-  );
+  assert.equal(await dailyCollection(s.pool, now + 3 * 86_400_000, { fetcher: fixtures }), null);
   assert.equal((await state('admin')).runs.length, 3);
 });
 

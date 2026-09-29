@@ -2,10 +2,8 @@ import { buildApp } from '../src/server/app';
 import { codeAt, stepAt } from '../src/server/totp';
 import type { Sender } from '../src/server/notifications';
 import type { Fetcher } from '../src/server/collect';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { directoryStore } from '../src/server/evidence';
+import { createHash } from 'node:crypto';
+import type { Pool } from '../src/server/db';
 import { createTestDb } from './test-db';
 export const origin = 'http://127.0.0.1:4318';
 export const password = 'correct horse battery staple';
@@ -34,12 +32,9 @@ export async function harness(options: { sender?: Sender; sourceFetcher?: Fetche
   const key = Buffer.alloc(32, 9);
   const clock = { now: Date.parse('2026-09-29T00:00:00Z') };
   const now = () => clock.now;
-  const evidenceDir = mkdtempSync(join(tmpdir(), 'omniboard-evidence-'));
-  const store = directoryStore(evidenceDir);
   const app = await buildApp({
     pool: db.pool,
     totpKey: key,
-    evidence: store,
     origin,
     now,
     serveStatic: false,
@@ -88,7 +83,17 @@ export async function harness(options: { sender?: Sender; sourceFetcher?: Fetche
   const close = async () => {
     await app.close();
     await db.drop();
-    rmSync(evidenceDir, { recursive: true, force: true });
   };
-  return { db, app, store, ctx, clock, tick, code, request, activate, login, close };
+  return { db, app, ctx, clock, tick, code, request, activate, login, close };
+}
+/** 直接插入证据行的测试夹具先放原件(外键),返回它的 sha256。 */
+export async function original(pool: Pool, content: string | Buffer = ''): Promise<string> {
+  const bytes = Buffer.from(content);
+  const sha = createHash('sha256').update(bytes).digest('hex');
+  await pool.query(
+    `INSERT INTO omniboard.evidence_originals (sha256, bytes) VALUES ($1,$2)
+     ON CONFLICT (sha256) DO NOTHING`,
+    [sha, bytes],
+  );
+  return sha;
 }

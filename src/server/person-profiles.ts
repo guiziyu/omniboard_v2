@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Client, Pool } from './db';
 import { id, tx } from './db';
 import { problem, type User } from './auth';
-import { saveEvidence, type EvidenceStore } from './evidence';
+import { saveEvidence } from './evidence';
 import { checkAccess, getObject, identityIndex, lockKnowledge, mergeInto } from './knowledge';
 import { ensurePersonDossier } from './person-dossier';
 import { getOrganization } from './organizations';
@@ -376,7 +376,6 @@ export type ProfileImportResult = {
 };
 export async function importPersonProfile(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   body: unknown,
   today: string,
@@ -542,14 +541,14 @@ export async function importPersonProfile(
         const fresh = await getObject(client, user, objectId);
         const merged = await getObject(client, user, other);
         if (fresh.id !== merged.id)
-          await mergeInto(client, store, user, fresh.id, {
+          await mergeInto(client, user, fresh.id, {
             otherId: merged.id,
             revision: fresh.revision,
             otherRevision: merged.revision,
             reason: `Same personal source profile: ${source.url}`,
           });
       }
-    const evidenceId = await saveEvidence(client, store, Buffer.from(input.rawText), {
+    const evidenceId = await saveEvidence(client, Buffer.from(input.rawText), {
       source: 'person_profile',
       url: source.url,
       contentType: 'text/plain; charset=utf-8',
@@ -639,7 +638,6 @@ export const duplicateDecisionInput = z
   .strict();
 export async function decideDuplicate(
   pool: Pool,
-  store: EvidenceStore,
   user: User,
   objectId: string,
   input: z.infer<typeof duplicateDecisionInput>,
@@ -656,18 +654,13 @@ export async function decideDuplicate(
     )
       problem(422, 'Choose two separate people with the same access level.');
     const [left, right] = [a.id, b.id].sort();
-    const evidenceId = await saveEvidence(
-      client,
-      store,
-      Buffer.from(JSON.stringify(input, null, 2)),
-      {
-        source: 'manual',
-        url: '',
-        contentType: 'application/json',
-        filename: 'duplicate-decision.json',
-        visibility: a.visibility,
-      },
-    );
+    const evidenceId = await saveEvidence(client, Buffer.from(JSON.stringify(input, null, 2)), {
+      source: 'manual',
+      url: '',
+      contentType: 'application/json',
+      filename: 'duplicate-decision.json',
+      visibility: a.visibility,
+    });
     await client.query(
       `INSERT INTO omniboard.person_duplicate_decisions
          (left_id, right_id, decision, reason, evidence_id, author_id)

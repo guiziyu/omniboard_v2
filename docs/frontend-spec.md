@@ -18,7 +18,7 @@
 - 登录、会话、成员与角色:proposal §4(强制 TOTP、`reader` / `editor` / `trader` / `admin` 四级、
   影响实盘的操作当场重输 TOTP)。v1 的 `reader` / `editor` / `admin` 行为在 v2 中原样沿用给同名角色。
 - 接入请求导出与验证结果投影:proposal §6(`omniboard.v_connector_request` 视图、直接读 `verification.v_*`)。
-- 证据原件存储:S3,按 sha256 寻址;用户可见的字段与行为不变(5.10)。
+- 证据原件存储:PG,按 sha256 寻址;用户可见的字段与行为不变(5.10)。
 - v2 新增、v1 没有的界面(激活与登录、成员管理、API 令牌、交易账户与 key 录入、`hft_config` 编辑、HFT 重启、
   审计日志、通知):见第 12 节。表结构见 [data-model.md](data-model.md)。
 
@@ -924,7 +924,7 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
   - 手工原文的 parserVersion 为 `manual-v1`，默认文件名为 `reference.txt`。
   - 快照的可见性随所属记录或对象，admin 快照对非 admin 返回 403。
   - 编辑记录时，旧版本的原引用永久保留，历史中仍可打开。
-  - v2 的原件放 S3，但以上用户可见字段与行为保持不变。
+  - v2 的原件存 PG，但以上用户可见字段与行为保持不变。
 - 来源：`src/web/components/EvidenceDrawer.vue`，`src/server/evidence.ts`，`src/server/app.ts`（/evidence/:id），`tests/rankings.test.ts`，`tests/knowledge.test.ts`，`docs/verification.md`
 
 ## 6 人员

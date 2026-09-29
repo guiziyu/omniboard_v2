@@ -5,7 +5,7 @@ import { ensurePersonDossier } from '../src/server/person-dossier';
 import { personProfileSchema, personSourceKey } from '../src/shared/person-profile';
 import type { TalentDetail, TalentDirectory } from '../src/shared/talent';
 import type { KnowledgeObject } from '../src/shared/operations';
-import { harness, tokenOf } from './helpers';
+import { harness, original, tokenOf } from './helpers';
 // 个人履历与由履历生成的人员变动(frontend-spec 6.12–6.15)。v1 tests/person-profiles.test.ts 逐条保留;
 // v1 直接调用服务端函数的地方改为经 API 调用,抛错改为断言状态码。
 
@@ -91,7 +91,7 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
       `INSERT INTO omniboard.evidence
          (id, source, url, sha256, byte_length, content_type, parser_version, filename, visibility)
        VALUES ($1,'public_profile',$2,$3,0,'text/plain','manual-v1','reference.txt','team')`,
-      ['evidence-' + key, url, '0'.repeat(64)],
+      ['evidence-' + key, url, await original(pool)],
     );
     await pool.query(
       `INSERT INTO omniboard.module_records

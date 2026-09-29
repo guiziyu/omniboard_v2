@@ -23,9 +23,7 @@
   - `workspace_id` 全部去掉(proposal §8 不做多 workspace)。
   - 可见性:`visibility text CHECK (visibility IN ('team','admin'))`,创建后不可改(spec 0.2),由触发器拒绝 UPDATE 该列。
 - 单进程互斥:定时采集等后台任务用 `pg_try_advisory_lock`,取代 v1 PID 锁。
-- 证据原件:S3 私有桶,对象键 `evidence/<sha256>`;库里只存元数据(3.1)。开发与测试用本地目录
-  (`OMNIBOARD_EVIDENCE_DIR/evidence/<sha256>`)。上传带 SHA-256 校验和、以 `If-None-Match: *` 条件写入
-  (同内容只写一次,版本化的桶里不堆重复版本),读取时校验 sha256。
+- 证据原件:存 `evidence_originals`(按 sha256 寻址,3.1),与元数据在同一事务里写入(改判 proposal §2 的 S3)。
 
 ## 2 数据库角色与授权
 
@@ -57,7 +55,8 @@
 
 | v2 表 | v1 表 | 变化 | 迁移 |
 |---|---|---|---|
-| `evidence` | `source_snapshots` | 原件移到 S3,`s3_key` = `evidence/<sha256>`;`sha256` 建普通索引(同一原件可被多条证据引用,不唯一) | ✓ |
+| `evidence` | `source_snapshots` | 原件移到 `evidence_originals`;`sha256` 建普通索引(同一原件可被多条证据引用,不唯一),外键指向原件 | ✓ |
+| `evidence_originals` | `data/raw/<sha256>` 文件 | `sha256 text PK, bytes bytea`;约束核对 `sha256 = encode(sha256(bytes),'hex')`;app 只有 SELECT、INSERT | ✓ |
 | `source_entity_links` | 同名 | — | ✓ |
 | `collection_runs` | 同名 | 删 `process_id`;保留「同时最多一个 running」部分唯一索引 | ✗ |
 | `source_observations` | 同名 | `metrics_json` → `metrics jsonb` | ✗(CMC/CoinGecko 历史不迁,proposal §9) |
@@ -66,8 +65,8 @@
 所有引用 v1 `raw_id` / `attachment_id` 的列改名为 `evidence_id` / `attachment_evidence_id`,外键指向 `evidence`。
 
 实现补充(`002_organizations.sql`):
-- `evidence.s3_key` 是生成列(`'evidence/' || sha256`),不能单独写。`visibility` 由触发器 `keep_visibility()`
-  拒绝修改,`module_records` 共用同一个函数。
+- `evidence.visibility` 由触发器 `keep_visibility()` 拒绝修改,`module_records` 共用同一个函数。
+  (002 的 `evidence.s3_key` 生成列已由 `010_evidence_originals.sql` 删除。)
 - `source_observations`、`metric_observations` 各加 `seq bigint GENERATED ALWAYS AS IDENTITY`,取代 v1 的 `rowid`,
   在同一时刻的多条观测之间决定先后(frontend-spec 9.1)。
 - `collection_runs.snapshot_id` 改名 `evidence_id`。
@@ -84,7 +83,7 @@
 |---|---|---|
 | `organizations` | — | ✓ |
 | `organization_tags` | tag 枚举取 v1 016 的 13 个;`exchange` 隐含 `company` 改为 PG 触发器 | ✓ |
-| `organization_aliases`、`organization_profiles`、`organization_logos`、`organization_external_keys` | `*_json` → `jsonb`;`organization_logos.logo_path` 改为 `logo_evidence_id`(logo 原件也进 S3,须为 team 可见的 `image/*`),v1 `raw_id` 改为 `evidence_id`(抓取 logo 的来源页);`organization_external_keys` 主键改为 `external_key` | ✓ |
+| `organization_aliases`、`organization_profiles`、`organization_logos`、`organization_external_keys` | `*_json` → `jsonb`;`organization_logos.logo_path` 改为 `logo_evidence_id`(logo 原件也进 `evidence_originals`,须为 team 可见的 `image/*`),v1 `raw_id` 改为 `evidence_id`(抓取 logo 的来源页);`organization_external_keys` 主键改为 `external_key` | ✓ |
 
 实现补充(别名导入):`organization_aliases` 经 `POST /api/import/organization-aliases`
 (`{aliasId, organizationId, reason, createdAt, payload}`)写入,只在导入窗口内由 admin 令牌调用;两个机构须先导入,
