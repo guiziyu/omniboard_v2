@@ -995,7 +995,7 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
   - reader → 403。
   - 理由为空白 → 422。上级在其他机构 → 422。上级可见性不同(例如 team 员工挂到 admin 上级)→ 422。上级是自己或后代(会成环)→ 422。来源 URL 不是 http(s)(如 `javascript:`)→ 422。
   - revision 过期 → 409。editor 移动 admin 记录 → 404。
-  - 移动时新建一份独立的关系证据(`relationshipRawId`),人员自己的原始证据、正文、邮箱都不变;revision +1,写入版本历史。
+  - 移动时新建一份独立的关系证据(v1 `relationshipRawId`,v2 `relationshipEvidenceId`),人员自己的原始证据、正文、邮箱都不变;revision +1,写入版本历史。
   - 移到顶层时确定性强制为 unconfirmed。
   - 新建人员的关系默认 unconfirmed,即使记录状态是"已确认"也一样;没有关系元数据的旧数据读出来也是 unconfirmed。
   - 通用编辑器改上级时，必须提供新的关系理由，否则 422。只改其他字段时保留原有确认状态。

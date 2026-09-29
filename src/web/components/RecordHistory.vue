@@ -1,13 +1,18 @@
 <script setup lang="ts">
 // 记录版本历史(frontend-spec 5.5):从新到旧;每个版本可打开当时的原引用。
+// 组织架构图记录(positions 有值)另显示当时的上级、确定性与关系证据(6.2)。
 import { ref, watch } from 'vue';
 import { api, errorText } from '../api';
 import { tr } from '../i18n';
 import { dateTime } from '../labels';
 import { openEvidence } from '../evidence';
-import type { RecordVersion } from '../../shared/types';
+import type { ModuleRecord, RecordVersion } from '../../shared/types';
 import AppDialog from './AppDialog.vue';
-const props = defineProps<{ recordId: string }>();
+const props = defineProps<{ recordId: string; positions?: ModuleRecord[] }>();
+const managerName = (id: string) =>
+  id
+    ? props.positions?.find((r) => r.id === id)?.personName || tr('Position unavailable')
+    : tr('No recorded manager / Top level');
 const emit = defineEmits<{ close: [] }>();
 const versions = ref<RecordVersion[]>();
 const error = ref('');
@@ -39,6 +44,26 @@ watch(
       <h4>{{ version.payload.title }}</h4>
       <p class="record-body">{{ version.payload.body }}</p>
       <p v-if="version.payload.personEmail">{{ version.payload.personEmail }}</p>
+      <div v-if="positions" class="chart-history-relationship">
+        <strong>{{ tr('Reporting relationship') }}</strong>
+        <p>
+          {{ managerName(version.payload.reportsTo || '') }} ·
+          {{
+            version.payload.relationshipKind === 'confirmed' ? tr('Confirmed') : tr('Unconfirmed')
+          }}
+        </p>
+        <p v-if="version.payload.relationshipNote" class="record-body">
+          {{ version.payload.relationshipNote }}
+        </p>
+        <button
+          v-if="version.payload.relationshipEvidenceId"
+          type="button"
+          class="link"
+          @click="openEvidence(version.payload.relationshipEvidenceId)"
+        >
+          {{ tr('Relationship reference') }}
+        </button>
+      </div>
       <details v-if="version.payload.structured && Object.keys(version.payload.structured).length">
         <summary>{{ tr('Structured fields') }}</summary>
         <pre class="raw-preview">{{ JSON.stringify(version.payload.structured, null, 2) }}</pre>

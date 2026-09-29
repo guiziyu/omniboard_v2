@@ -296,6 +296,51 @@ export async function getOrganization(
   if (!org) problem(404, 'Organization not found.');
   return org;
 }
+/**
+ * 机构别名(data-model §3.2):合并后的旧机构 → 规范机构。只经导入写入;规范机构自己不能是别名,
+ * 同 alias 同目标视为已导入,指向别处返回 409。
+ */
+export const organizationAliasInput = z
+  .object({
+    aliasId: z.string().min(1).max(100),
+    organizationId: z.string().min(1).max(100),
+    reason: z.string().trim().min(1).max(500),
+    createdAt: z.iso.datetime({ offset: true }),
+    payload: z.record(z.string(), z.unknown()).default({}),
+  })
+  .strict();
+export async function importOrganizationAlias(
+  pool: Pool,
+  input: z.infer<typeof organizationAliasInput>,
+): Promise<boolean> {
+  if (input.aliasId === input.organizationId)
+    problem(422, 'An organization cannot be an alias of itself.');
+  return tx(pool, async (client) => {
+    const found = await client.query('SELECT id FROM omniboard.organizations WHERE id = ANY($1)', [
+      [input.aliasId, input.organizationId],
+    ]);
+    if (found.rowCount !== 2)
+      problem(422, 'Both organizations must exist before they can be aliased.');
+    const chained = await client.query(
+      'SELECT 1 FROM omniboard.organization_aliases WHERE alias_id = $1 OR organization_id = $2',
+      [input.organizationId, input.aliasId],
+    );
+    if (chained.rowCount) problem(422, 'Aliases must point directly to a canonical organization.');
+    const inserted = await client.query(
+      `INSERT INTO omniboard.organization_aliases (alias_id, organization_id, reason, created_at, payload)
+       VALUES ($1, $2, $3, $4, $5) ON CONFLICT (alias_id) DO NOTHING`,
+      [input.aliasId, input.organizationId, input.reason, input.createdAt, input.payload],
+    );
+    if (inserted.rowCount) return true;
+    const current = await client.query<{ organization_id: string }>(
+      'SELECT organization_id FROM omniboard.organization_aliases WHERE alias_id = $1',
+      [input.aliasId],
+    );
+    if (current.rows[0]!.organization_id !== input.organizationId)
+      problem(409, 'This organization is already an alias of another organization.');
+    return false;
+  });
+}
 export async function organizationCount(pool: Pool): Promise<number> {
   const result = await pool.query<{ n: string }>(
     `SELECT count(*) AS n FROM omniboard.organizations o

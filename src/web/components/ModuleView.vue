@@ -29,7 +29,9 @@ import {
   reviewPresentation,
 } from '../presentation';
 import Icon from './Icon.vue';
+import OrgChart from './OrgChart.vue';
 import OrganizationOverview from './OrganizationOverview.vue';
+import PeopleMovements from './PeopleMovements.vue';
 import RecordEditor from './RecordEditor.vue';
 import RecordHistory from './RecordHistory.vue';
 const props = defineProps<{ organization: Organization; data: ModuleData; tab: TabDefinition }>();
@@ -199,7 +201,8 @@ const showList = computed(
           <p class="hint">{{ tr(tab.description) }}</p>
         </div>
         <button v-if="tab.kind !== 'stats' && canEdit" type="button" class="ghost" @click="edit()">
-          <Icon name="plus" :size="16" /> {{ tr('Add record') }}
+          <Icon name="plus" :size="16" />
+          {{ tab.kind === 'chart' ? tr('Add person') : tr('Add record') }}
         </button>
       </div>
       <OrganizationOverview
@@ -207,7 +210,25 @@ const showList = computed(
         :organization="organization"
         @add-note="edit()"
       />
-      <div v-if="data.status === 'empty' && tab.kind === 'records'" class="empty">
+      <OrgChart
+        v-if="tab.kind === 'chart'"
+        :organization="organization"
+        :records="records"
+        @edit="edit"
+        @history="historyFor = $event"
+        @refresh="emit('refresh')"
+      />
+      <PeopleMovements
+        v-if="tab.kind === 'timeline' && records.length"
+        :organization="organization"
+        :records="records"
+        @edit="edit"
+        @history="historyFor = $event"
+      />
+      <div
+        v-if="data.status === 'empty' && ['records', 'timeline'].includes(tab.kind)"
+        class="empty"
+      >
         <h3>{{ tr('Ready for the first insight') }}</h3>
         <p>
           {{
@@ -409,12 +430,18 @@ const showList = computed(
       :organization="organization"
       :tab="tab"
       :record="editing"
+      :records="records"
       @close="showEditor = false"
       @saved="
         showEditor = false;
         emit('refresh');
       "
     />
-    <RecordHistory v-if="historyFor" :record-id="historyFor" @close="historyFor = undefined" />
+    <RecordHistory
+      v-if="historyFor"
+      :record-id="historyFor"
+      :positions="tab.kind === 'chart' ? records : undefined"
+      @close="historyFor = undefined"
+    />
   </div>
 </template>

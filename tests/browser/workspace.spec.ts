@@ -199,6 +199,114 @@ test('workspace access pages', async ({ page }) => {
     ).toBeVisible();
   });
 
+  await test.step('org chart and people movements: add, move, drag, history, classify', async () => {
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Org Chart', exact: true }).click();
+    await expect(page).toHaveURL(/\/org_chart$/);
+    const chart = page.getByRole('region', { name: 'Interactive organization chart' });
+    await expect(
+      chart.getByRole('heading', { name: 'Build this organization’s people map' }),
+    ).toBeVisible();
+
+    // 新建人员:汇报关系默认未确认,新职位的原文同时作为关系证据(6.2、6.4)。
+    await chart.getByRole('button', { name: 'Add the first person' }).click();
+    const add = page.getByRole('dialog', { name: 'Add person' });
+    await add.getByLabel('Role / job title').fill('Chief Executive Officer');
+    await add.getByLabel('Person name', { exact: true }).fill('Casey Chief');
+    await add.getByLabel('Notes').fill('Named on the team page.');
+    await add.getByLabel('Original text').fill('Casey Chief, CEO');
+    await add.getByRole('button', { name: 'Save person' }).click();
+    await expect(add).toBeHidden();
+    await page.getByRole('button', { name: 'Add person' }).click();
+    await add.getByLabel('Role / job title').fill('Head of Institutional Sales');
+    await add.getByLabel('Person name', { exact: true }).fill('Morgan Manager');
+    await add
+      .getByLabel('Reports to')
+      .selectOption({ label: 'Casey Chief · Chief Executive Officer' });
+    await add.getByLabel('Notes').fill('Runs the institutional desk.');
+    await add.getByLabel('Original text').fill('Morgan reports to Casey (team page).');
+    await add.getByRole('button', { name: 'Save person' }).click();
+    await expect(add).toBeHidden();
+    await expect(chart.getByText('2 people')).toBeVisible();
+    await expect(chart.getByText('Unconfirmed reporting line')).toBeVisible();
+
+    // 键盘调整:在手柄上按 Enter,改为已确认;理由为空时不能保存。
+    await chart.getByRole('button', { name: 'Move Morgan Manager' }).press('Enter');
+    const move = page.getByRole('dialog', { name: 'Move Morgan Manager' });
+    await move.getByLabel('Relationship certainty').selectOption('confirmed');
+    await expect(move.getByRole('button', { name: 'Save relationship' })).toBeDisabled();
+    await move
+      .getByLabel('Original evidence / reason for this change')
+      .fill('Casey confirmed the reporting line on the 2026-09-28 call.');
+    await move.getByRole('button', { name: 'Save relationship' }).click();
+    await expect(move).toBeHidden();
+    await expect(chart.getByText('Confirmed reporting line')).toBeVisible();
+
+    await chart.getByRole('button', { name: 'View Morgan Manager' }).click();
+    const person = page.getByRole('complementary', { name: 'Selected person' });
+    await expect(person).toContainText('Confirmed direct report');
+    await person.getByRole('button', { name: 'History' }).click();
+    const history = page.getByRole('dialog', { name: 'Record history' });
+    await expect(history.locator('article')).toHaveCount(2);
+    await expect(history.locator('article').first()).toContainText('Casey Chief · Confirmed');
+    await page.keyboard.press('Escape');
+    await expect(history).toBeHidden();
+
+    // 拖拽:拖到机构根区域 = 移到顶层,松开后打开确认对话框并预填顶层。
+    // 选中人员时侧栏会滚进视口,先把根区域滚回来再量坐标。
+    await chart.locator('.chart-root-area').scrollIntoViewIfNeeded();
+    const handle = (await chart
+      .getByRole('button', { name: 'Move Morgan Manager' })
+      .boundingBox())!;
+    const root = (await chart.locator('.chart-root-area').boundingBox())!;
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x, handle.y - 20, { steps: 4 });
+    await page.mouse.move(root.x + root.width / 2, root.y + root.height / 2, { steps: 8 });
+    await expect(chart.getByText('Drop here to remove the recorded manager')).toBeVisible();
+    await page.mouse.up();
+    await expect(move).toBeVisible();
+    await expect(move.getByLabel('Reports to')).toHaveValue('');
+    await page.keyboard.press('Escape');
+    await expect(move).toBeHidden();
+
+    await chart.getByRole('button', { name: 'List', exact: true }).click();
+    await expect(chart.getByRole('row', { name: /Morgan Manager/ })).toContainText(
+      'Confirmed direct report',
+    );
+
+    // 人员变动:按本机构视角分类,月份精度原样显示(6.5、6.8)。
+    await page.getByRole('button', { name: 'People Movements', exact: true }).click();
+    await page.getByRole('button', { name: 'Add the first record' }).click();
+    const editor = page.getByRole('dialog', { name: 'Add organization knowledge' });
+    await editor.getByLabel('Title').fill('Robin Fixture leaves Acme');
+    await editor.getByLabel('Person name', { exact: true }).fill('Robin Fixture');
+    await editor.getByLabel('Event described by source').selectOption('left');
+    await editor.getByLabel('Date precision').selectOption('month');
+    await editor.getByLabel('Event month').fill('2026-04');
+    await editor.getByLabel('Previous role').fill('Trader');
+    await expect(editor.getByRole('status')).toHaveText(
+      'In Acme Exchange, this will appear as: Departed',
+    );
+    await editor.getByLabel('Notes').fill('Farewell post.');
+    await editor.getByLabel('Original text').fill('Robin: last day at Acme was in April 2026.');
+    await editor.getByRole('button', { name: 'Save record' }).click();
+    await expect(editor).toBeHidden();
+    const movements = page.getByRole('region', { name: 'People Movements', exact: true });
+    await expect(movements.getByRole('button', { name: 'Departed 1', exact: true })).toBeVisible();
+    await expect(movements.locator('details[open]')).toHaveCount(0);
+    await movements.getByText('Robin Fixture', { exact: true }).click();
+    await expect(movements).toContainText('Next organization not recorded');
+    await expect(movements).toContainText('2026-04 · Month only');
+    await movements.getByRole('button', { name: 'Edit movement', exact: true }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit record' });
+    await edit.getByLabel('Previous role').fill('Senior Trader');
+    await edit.getByRole('button', { name: 'Save record' }).click();
+    await expect(edit).toBeHidden();
+    await expect(movements).toContainText('Senior Trader');
+    await page.getByRole('button', { name: 'Back to organizations' }).click();
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

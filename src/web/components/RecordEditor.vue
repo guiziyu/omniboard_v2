@@ -1,12 +1,20 @@
 <script setup lang="ts">
-// 记录编辑器(frontend-spec 5.6),从 v1 RecordEditor.vue 迁移。组织架构图、人员变动、讨论的专属字段
-// 随各自模块一起迁移(registry.ts pendingModules)。
+// 记录编辑器(frontend-spec 5.6;组织架构 6.4、人员变动 6.8),从 v1 RecordEditor.vue 迁移。
+// 讨论的专属字段随讨论(5.9)一起迁移。
 import { computed, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, errorText, session } from '../api';
 import { tr } from '../i18n';
 import { useDraft } from '../draft';
 import { defaultsFor, knowledgeFields } from '../../shared/knowledge';
+import { descendants } from '../../shared/org-chart';
+import { datePrecision } from '../../shared/movement-date';
+import {
+  movementDateLabels,
+  movementPerspective,
+  movementTransition,
+  movementType,
+} from '../../shared/people-movements';
 import type { ModuleRecord, TabDefinition } from '../../shared/types';
 import AppDialog from './AppDialog.vue';
 import KnowledgeFields from './KnowledgeFields.vue';
@@ -14,7 +22,11 @@ const props = defineProps<{
   organization: { id: string; name: string };
   tab: TabDefinition;
   record?: ModuleRecord;
+  // 同一 tab 的记录:组织架构图用来列出可选上级。
+  records?: ModuleRecord[];
 }>();
+const chart = props.tab.kind === 'chart';
+const timeline = props.tab.kind === 'timeline';
 const emit = defineEmits<{ close: []; saved: [] }>();
 const form = reactive({
   title: props.record?.title || '',
@@ -33,7 +45,30 @@ const form = reactive({
         }
       : {}),
     ...props.record?.structured,
+    ...(timeline
+      ? {
+          eventDatePrecision:
+            props.record?.structured.eventDatePrecision ||
+            datePrecision(props.record?.eventDate || ''),
+          dateLabel: props.record?.structured.dateLabel || '',
+          dateBasis: props.record?.structured.dateBasis || 'unknown',
+          fromRole: props.record?.structured.fromRole || '',
+          toRole: props.record?.structured.toRole || '',
+          fromOrganization: props.record?.structured.fromOrganization || '',
+          toOrganization: props.record?.structured.toOrganization || '',
+        }
+      : {}),
   } as Record<string, string>,
+  ...(chart
+    ? {
+        reportsTo: props.record?.reportsTo || '',
+        relationshipKind: props.record?.relationshipKind || 'unconfirmed',
+        relationshipNote: '',
+      }
+    : {}),
+  ...(timeline
+    ? { eventDate: props.record?.eventDate || '', eventType: props.record?.eventType || '' }
+    : {}),
   rawText: '',
   reuseReference: !!props.record,
   sourceUrl: '',
@@ -67,7 +102,56 @@ const removeGuard = router.beforeEach(
     ),
 );
 onUnmounted(removeGuard);
-const title = computed(() => (props.record ? tr('Edit record') : tr('Add organization knowledge')));
+const title = computed(() =>
+  chart
+    ? props.record
+      ? tr('Edit person')
+      : tr('Add person')
+    : props.record
+      ? tr('Edit record')
+      : tr('Add organization knowledge'),
+);
+// ---- 组织架构图(6.4):上级只能是非后代、可见性与表单一致的人员 ----
+const invalidParents = computed(() =>
+  props.record ? descendants(props.records ?? [], props.record.id) : new Set<string>(),
+);
+const parentChoices = computed(() =>
+  (props.records ?? []).filter(
+    (r) => !invalidParents.value.has(r.id) && r.visibility === form.visibility,
+  ),
+);
+const relationshipChanged = computed(
+  () =>
+    !!props.record &&
+    chart &&
+    (form.reportsTo !== props.record.reportsTo ||
+      (!!form.reportsTo && form.relationshipKind !== props.record.relationshipKind)),
+);
+// ---- 人员变动(6.8):改精度时截断已填日期;实时预览本机构视角的分类 ----
+function changeDatePrecision() {
+  const precision = form.structured.eventDatePrecision;
+  const value = form.eventDate ?? '';
+  form.eventDate =
+    precision === 'unknown'
+      ? ''
+      : precision === 'year'
+        ? value.slice(0, 4)
+        : precision === 'month'
+          ? value.slice(0, 7)
+          : value.length === 10
+            ? value
+            : '';
+}
+const movementForm = computed(() => ({
+  eventType: form.eventType ?? '',
+  structured: form.structured,
+}));
+const movementPreview = computed(() =>
+  movementType(movementPerspective(movementForm.value, props.organization.name)),
+);
+const movementEndpoints = computed(() =>
+  movementTransition(movementForm.value, props.organization.name),
+);
 const error = ref('');
 const saving = ref(false);
 const file = ref<File>();
@@ -130,17 +214,149 @@ async function save() {
           </button>
         </span>
       </div>
-      <label for="record-title">{{ tr('Title') }}</label>
+      <label for="record-title">{{ chart ? tr('Role / job title') : tr('Title') }}</label>
       <input
         id="record-title"
         v-model="form.title"
         required
         maxlength="160"
-        :placeholder="tr('Summarize this information in one sentence.')"
+        :placeholder="
+          chart
+            ? tr('e.g. Head of Institutional Sales')
+            : tr('Summarize this information in one sentence.')
+        "
       />
-      <KnowledgeFields v-if="knowledgeFields[tab.id]" :tab-id="tab.id" :model="form.structured" />
-      <div v-if="tab.id === 'contacts'" class="form-grid">
+      <div v-if="chart || timeline" class="form-grid">
         <label>
+          {{ tr('Person name') }}
+          <input v-model="form.personName" required maxlength="100" :placeholder="tr('Name')" />
+        </label>
+        <label v-if="chart">
+          {{ tr('Reports to') }}
+          <select v-model="form.reportsTo">
+            <option value="">{{ tr('No recorded manager / Top level') }}</option>
+            <option v-for="parent in parentChoices" :key="parent.id" :value="parent.id">
+              {{ parent.personName }} · {{ parent.title }}
+            </option>
+          </select>
+        </label>
+        <template v-if="timeline">
+          <label>
+            {{ tr('Event described by source') }}
+            <select v-model="form.eventType" required>
+              <option value="" disabled>{{ tr('Select a type') }}</option>
+              <option value="joined">{{ tr('Joined') }}</option>
+              <option value="left">{{ tr('Departed') }}</option>
+              <option value="role_change">{{ tr('Role change') }}</option>
+            </select>
+          </label>
+          <label>
+            {{ tr('Date meaning') }}
+            <select v-model="form.structured.dateBasis">
+              <option v-for="(label, basis) in movementDateLabels" :key="basis" :value="basis">
+                {{ tr(label) }}
+              </option>
+            </select>
+          </label>
+          <label>
+            {{ tr('Date precision') }}
+            <select v-model="form.structured.eventDatePrecision" @change="changeDatePrecision">
+              <option value="day">{{ tr('Exact day published') }}</option>
+              <option value="month">{{ tr('Month only') }}</option>
+              <option value="year">{{ tr('Year only') }}</option>
+              <option value="unknown">{{ tr('Date not published') }}</option>
+            </select>
+          </label>
+          <label v-if="form.structured.eventDatePrecision !== 'unknown'">
+            {{
+              form.structured.eventDatePrecision === 'month' ? tr('Event month') : tr('Event date')
+            }}
+            <input
+              v-model="form.eventDate"
+              :type="
+                form.structured.eventDatePrecision === 'year'
+                  ? 'text'
+                  : form.structured.eventDatePrecision === 'month'
+                    ? 'month'
+                    : 'date'
+              "
+              :pattern="form.structured.eventDatePrecision === 'year' ? '[0-9]{4}' : undefined"
+              required
+            />
+          </label>
+          <label>
+            {{ tr('Date wording in source') }}
+            <input
+              v-model="form.structured.dateLabel"
+              maxlength="500"
+              :placeholder="tr('e.g. Post: 2mo ago; exact joining date not stated')"
+            />
+          </label>
+        </template>
+      </div>
+      <fieldset v-if="timeline" class="form-section">
+        <legend>{{ tr('Before and after') }}</legend>
+        <p class="hint">
+          {{ tr('Only enter details stated by the source. Leave unknown values empty.') }}
+        </p>
+        <div class="form-grid">
+          <label>
+            {{ tr('Previous organization') }}
+            <input
+              v-model="form.structured.fromOrganization"
+              maxlength="200"
+              :placeholder="movementEndpoints.fromOrganization || tr('Not recorded')"
+            />
+          </label>
+          <label>
+            {{ tr('Next organization') }}
+            <input
+              v-model="form.structured.toOrganization"
+              maxlength="200"
+              :placeholder="movementEndpoints.toOrganization || tr('Not recorded')"
+            />
+          </label>
+          <label>
+            {{ tr('Previous role') }}
+            <input v-model="form.structured.fromRole" maxlength="200" />
+          </label>
+          <label>
+            {{ tr('New role') }}
+            <input v-model="form.structured.toRole" maxlength="200" />
+          </label>
+        </div>
+        <p class="hint" role="status">
+          {{
+            tr('In {0}, this will appear as: {1}', [organization.name, tr(movementPreview.label)])
+          }}
+        </p>
+      </fieldset>
+      <template v-if="chart">
+        <label v-if="form.reportsTo">
+          {{ tr('Reporting relationship') }}
+          <select v-model="form.relationshipKind">
+            <option value="unconfirmed">{{ tr('Unconfirmed relationship · Dashed line') }}</option>
+            <option value="confirmed">{{ tr('Confirmed direct report · Solid line') }}</option>
+          </select>
+        </label>
+        <label v-if="form.reportsTo || relationshipChanged">
+          {{ tr('Relationship evidence / reason for change') }}
+          <textarea
+            v-model="form.relationshipNote"
+            :required="relationshipChanged && form.reuseReference"
+            rows="3"
+            maxlength="100000"
+            :placeholder="
+              tr(
+                'Original correspondence or a first-hand note, including who confirmed it and when. New positions can use the original reference below.',
+              )
+            "
+          />
+        </label>
+      </template>
+      <KnowledgeFields v-if="knowledgeFields[tab.id]" :tab-id="tab.id" :model="form.structured" />
+      <div v-if="chart || timeline || tab.id === 'contacts'" class="form-grid">
+        <label v-if="tab.id === 'contacts'">
           {{ tr('Person name (optional)') }}
           <input v-model="form.personName" maxlength="100" />
         </label>
@@ -240,7 +456,7 @@ async function save() {
           {{ tr('Cancel') }}
         </button>
         <button type="submit" :disabled="saving">
-          {{ saving ? tr('Saving…') : tr('Save record') }}
+          {{ saving ? tr('Saving…') : chart ? tr('Save person') : tr('Save record') }}
         </button>
       </div>
     </form>

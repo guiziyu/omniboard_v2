@@ -80,6 +80,10 @@
 | `organization_tags` | tag 枚举取 v1 016 的 13 个;`exchange` 隐含 `company` 改为 PG 触发器 | ✓ |
 | `organization_aliases`、`organization_profiles`、`organization_logos`、`organization_external_keys` | `*_json` → `jsonb`;`organization_logos.logo_path` 改为 `logo_evidence_id`(logo 原件也进 S3,须为 team 可见的 `image/*`),v1 `raw_id` 改为 `evidence_id`(抓取 logo 的来源页);`organization_external_keys` 主键改为 `external_key` | ✓ |
 
+实现补充(别名导入):`organization_aliases` 经 `POST /api/import/organization-aliases`
+(`{aliasId, organizationId, reason, createdAt, payload}`)写入,只在导入窗口内由 admin 令牌调用;两个机构须先导入,
+别名必须直接指向规范机构(不能成链),同 alias 同目标返回 200,指向别处返回 409。
+
 ### 3.3 记录、指标、情报
 
 `module_records`、`edit_history`、`metric_observations` 先于本节其余表建立(`003_records_metrics.sql`):
@@ -94,6 +98,19 @@
 - 导入记录时,以下字段只在导入窗口内由 admin 令牌写入(D6 的延伸):`evidenceId` / `attachmentEvidenceId`
   (引用已上传的证据,代替原文)、`authorId`(v1 作者,须是已导入的成员)、`importedRevision`(保留 v1 revision)、
   `updatedAt`。`id` 任何编辑者都可传。team 记录不能引用 admin 证据。
+
+实现补充(组织架构图与人员变动,`004_org_chart.sql`):
+- `org_chart_relationships.raw_id` 改名 `evidence_id`。关系理由存为独立证据(`relationship-reference.txt`,可见性同记录);
+  没有这一行的上级读作 `unconfirmed`。API 的记录字段 `relationshipRawId` 改名 `relationshipEvidenceId`。
+- 组织架构图记录的 `edit_history.payload` 另含 `reportsTo`、`relationshipKind`、`relationshipNote`、
+  `relationshipEvidenceId`;调整汇报的 action 为 `reporting_relationship_updated`。
+- 同一机构的架构图写入用事务级 advisory lock 串行,环检测读到的上级链不会被并发移动改掉。
+- 导入职位时可带 `relationshipEvidenceId`(导入字段,规则同上)连同 `relationshipKind`、`relationshipNote` 写入关系;
+  不带时,v1 里没有关系元数据的上级原样导入、读作 `unconfirmed`。上级须先导入(按上级在前的顺序),
+  v1 里指向不存在职位的 `reportsTo` 导入为 `''`(页面同样显示为顶层)。
+- `record_aliases` 经 `POST /api/import/record-aliases`(`{aliasId, recordId}`)写入,规则同机构别名。
+- 由个人履历生成的人员变动(`structured.personProfileId` 等键,frontend-spec 6.14)不经记录接口导入,
+  随 §3.4 人员档案一起迁移。
 
 | v2 表 | 变化 | 迁移 |
 |---|---|---|

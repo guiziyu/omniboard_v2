@@ -202,14 +202,7 @@ export function unionTabs(a: Tag[], b: Tag[]): TabDefinition[] {
   return tabs.filter((t) => ids.has(t.id)).sort((a, b) => a.order - b.order);
 }
 /**
- * v2 移植中:这些模块的专用面板与写入规则还没迁过来(组织架构图、人员变动、讨论、关系、接入、路线图)。
+ * v2 移植中:这些模块的专用面板与写入规则还没迁过来(讨论、关系、接入、路线图)。
  * 期间界面显示「正在迁移」,服务端拒绝写入,移植完成后从这里删除。
  */
-export const pendingModules = [
-  'org_chart',
-  'people_movements',
-  'comments',
-  'relationships',
-  'onboarding',
-  'roadmap',
-];
+export const pendingModules = ['comments', 'relationships', 'onboarding', 'roadmap'];

@@ -24,6 +24,9 @@ export interface ModuleRecord {
   personEmail: string;
   structured: Record<string, string>;
   reportsTo: string;
+  relationshipKind: 'confirmed' | 'unconfirmed';
+  relationshipNote: string;
+  relationshipEvidenceId: string | null;
   eventDate: string;
   eventType: string;
   evidenceId: string;
@@ -88,5 +91,10 @@ export interface RecordVersion {
     personEmail?: string;
     structured?: Record<string, string>;
     evidenceId: string;
+    // 仅组织架构图记录(frontend-spec 6.2)。
+    reportsTo?: string;
+    relationshipKind?: 'confirmed' | 'unconfirmed';
+    relationshipNote?: string;
+    relationshipEvidenceId?: string | null;
   };
 }

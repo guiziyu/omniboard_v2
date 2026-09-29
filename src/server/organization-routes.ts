@@ -16,10 +16,12 @@ import {
   createOrganization,
   directory,
   getOrganization,
+  importOrganizationAlias,
   linkSource,
   logoEvidence,
   metricInput,
   metricPoints,
+  organizationAliasInput,
   organizationCount,
   organizationInput,
   recordMetric,
@@ -28,16 +30,20 @@ import {
 } from './organizations';
 import {
   importFields,
+  importRecordAlias,
   knownTab,
   moduleData,
+  moveRelationship,
   observations,
+  recordAliasInput,
   recordHistory,
   recordInput,
+  relationshipInput,
   saveRecord,
 } from './records';
 import { getOrganizationProfile, saveOrganizationProfile } from './profiles';
 import { tabsFor } from '../shared/registry';
-// 机构目录、机构、指标观测与证据的接口(frontend-spec 2.6、3、5.10、9.2–9.3)。
+// 机构目录、机构、记录、指标观测与证据的接口(frontend-spec 2.6、3、5、6.2、9.2–9.3)。
 export type OrganizationDeps = { pool: Pool; store: EvidenceStore; now: () => number };
 const idParam = z.object({ id: z.string().min(1).max(100) });
 /** 原件以附件或图片返回:禁止脚本,SVG 里的脚本也不执行。 */
@@ -111,6 +117,29 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
           .send({ id: saved.id, revision: saved.revision });
       },
     });
+  // 调整汇报关系(6.2):拖拽、键盘与侧栏都走这里。
+  const positionParam = z.object({
+    id: z.string().min(1).max(100),
+    recordId: z.string().min(1).max(100),
+  });
+  app.patch('/api/organizations/:id/org-chart/:recordId/relationship', async (request) => {
+    requireRole(request, 'editor');
+    const { id, recordId } = positionParam.parse(request.params);
+    const input = relationshipInput.parse(request.body);
+    const org = await getOrganization(pool, id, request.user.role);
+    return moveRelationship(pool, store, request.user, org.id, recordId, input);
+  });
+  // 合并关系的迁移导入(data-model §3.2、§3.3):只在导入窗口内由 admin 令牌写入。
+  app.post('/api/import/organization-aliases', async (request, reply) => {
+    const input = organizationAliasInput.parse(request.body);
+    await requireImport(pool, request);
+    return reply.code((await importOrganizationAlias(pool, input)) ? 201 : 200).send({ ok: true });
+  });
+  app.post('/api/import/record-aliases', async (request, reply) => {
+    const input = recordAliasInput.parse(request.body);
+    await requireImport(pool, request);
+    return reply.code((await importRecordAlias(pool, input)) ? 201 : 200).send({ ok: true });
+  });
   app.get('/api/records/:id/history', async (request) => ({
     history: await recordHistory(pool, idParam.parse(request.params).id, request.user.role),
   }));
