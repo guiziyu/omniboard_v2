@@ -1,5 +1,5 @@
 // 交易账户规则(data-model 5.1):与 quant `auth_model_to_auth` 的解析一致,另加 v2 规则。前端表单与服务端共用;
-// DB 上同样的约束见 db/owner/002_authentication_rules.sql。任一行不合规,quant 读取时整张快照拒收。
+// 库上不加约束,账户只通过 v2 维护(proposal §4)。任一行不合规,quant 读取时整张快照拒收。
 
 /** 可新建的交易所(`ExchangeName` 变体名,大小写精确)。 */
 export const exchanges = [

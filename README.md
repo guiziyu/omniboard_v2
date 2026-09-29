@@ -17,8 +17,8 @@
 ## 数据库
 
 - `npm run migrate`:用 `QUANT_PG_MIGRATOR_URL` 执行 `db/migrations/`(schema `omniboard` 归 migrator,D1)。
-- `db/owner/`:涉及 quant 表的角色、授权与约束,由 owner 按编号手工执行,不自动跑。`002_authentication_rules.sql`
-  给 `management.authentication` 加与 quant 解析相同的约束(坏行写不进去);测试库按编号全部执行。
+- `db/owner/`:涉及 quant 表的角色与授权,由 owner 按编号手工执行,不自动跑。测试库按编号全部执行。
+  交易账户(`management.authentication`)只通过 v2 维护,规则在 v2 里检查,库上不加约束(proposal §4)。
 - 应用用 `QUANT_PG_URL`(`omniboard_app`),启动时结构版本不符就退出。
 - 证据原件存在 `omniboard.evidence_originals`(按 sha256 寻址),与元数据在同一事务里写入;应用只能读和新增。
 - 迁移期结束:`npm run cli -- close-import`,此后导入接口不再接受系统时间戳(data-model D6)。

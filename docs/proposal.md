@@ -48,7 +48,8 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 - 原件放 PG 而不放 S3:v1 全部原件约 77 MB,每日采集一年约几百 MB;省去建桶与 IAM,原件与元数据同一事务写入,
   备份只有一份。代价是生产库与其备份随之变大。
 - 不用 SQLite。v1 已写明「写并发或存储运维需要时迁 PostgreSQL/对象存储」,前提 1 就是这个时点。
-- v2 上线后,DBeaver 只作应急通道。§4 的 DB 约束对它同样生效,但它绕过审计。
+- v2 上线后,交易账户只通过 v2 维护;DBeaver 只作应急通道,它绕过 v2 的检查与审计,应急改动后在 v2 的账户列表里
+  核对(解析不了的标签会标出来)。
 
 **已否决:**
 - 保留 SQLite 再同步到 PG:两份可写副本。
@@ -86,10 +87,12 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 | 运行时 | 硬风控上限放在 `omniboard_app` 写不到的地方。交易 key 必须在交易所侧绑定 IP 白名单(Neo 的 EIP),且不开提现权限:这是最后一道防线,泄露的 key 在别处不可用 |
 
 **必须先堵的坑**:authentication 快照只要有一行映射失败就整体拒收(quant `docs/context/database.md`
-§Current authoritative-read behavior),界面录错一行等于停掉所有钱包。要在 DB 上加约束或改成有类型的列
-(`account_tags` 合法、非 Test 账户 `ip_whitelist` 非空等),让写入端与
-Rust 解析端同规则,坏行写不进去。运行时「整体拒收」的安全语义不变。`hft_config` 已有约束,照此核对。
-约束 DDL 由 owner 执行。
+§Current authoritative-read behavior),界面录错一行等于停掉所有钱包。v2 写入前按与 Rust 解析端相同的规则检查
+(`account_tags` 合法、非 Test 账户 `ip_whitelist` 非空等,data-model 5.1),坏行写不进去;账户只通过 v2 维护,
+不在 DBeaver 里直接改。运行时「整体拒收」的安全语义不变。`hft_config` 已有约束,照此核对。
+(2026-09-29 改判:原计划在库上加 CHECK 约束,由 owner 执行。同一套规则要在 Rust、TS、SQL 三处同步,quant 新增标签
+或交易所都得先改 SQL,改为靠维护行为限制。能直接写这张表的其他角色是 `root`、`migrator`(人工与手工迁移)和
+`strategy`(只写 `verified_auth_tags`)。)
 
 ## 5. 关键流程
 
@@ -151,7 +154,6 @@ Rust 解析端同规则,坏行写不进去。运行时「整体拒收」的安�
 - `hft_config` 真值改为数据库:YAML(`hft-lp-gavin-cross.yaml`)退役,`sync_hft_config` 改为只读对比
   (不再 `--apply`),否则会覆盖界面改动(data-model D2)。
 - `hft-launcher`。
-- authentication 约束 DDL,由 owner 执行。
 
 **v2 仓库**:本文涉及的全部代码。
 
@@ -218,10 +220,13 @@ owner 已定:由 agent 经 API 逐条导入,顺便实测 agent 交互。
 - 先在 Neo 上跑(只监听本机,SSH 隧道访问),再部署到正式机;应用须能在任何满足前置条件的 arm64 机器上跑。
 - 影响实盘的操作暂不要求当场重输 TOTP(低优先级 TODO,frontend-spec 12.4);登录仍强制 TOTP。
 - 应用不依赖任何云厂商的服务:证据原件改存 PG(§2);通知邮件不用 SES,发送功能暂缓(低优先级 TODO,D5)。
+- `management.authentication` 不加库约束(撤销 `db/owner/002`,生产未执行过):规则只在 v2 里检查,账户只通过 v2
+  维护(§4)。
 
 ## 11. 翻案条件
 
 - Omniboard 的查询影响交易库:`omniboard` schema 迁到独立的 PG 实例,控制表写入改为经 quant 侧服务。
 - 界面操作出现未授权的实盘改动:入口加 IP 限制或零信任网关。
+- v2 以外的写入方写坏了 `management.authentication`:收回其他角色对账户列的写权限,或在库上加约束。
 - 出现外部客户或多租户:另立隔离方案。
 - 维护者不再是一人:重新评估角色模型与审批流程。

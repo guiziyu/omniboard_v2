@@ -365,14 +365,14 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 | `ip_whitelist` | 每项能解析为 IPv4 或 IPv6 地址(`std::net::IpAddr`,不接受 CIDR) |
 | `api_pass` | 非 NULL;没有 passphrase 的交易所写 `''` |
 
-**v2 另加的规则**(比 quant 解析更严,DB 约束同样执行,proposal §4「必须先堵的坑」):
+**v2 另加的规则**(比 quant 解析更严,只在 v2 里检查,proposal §4「必须先堵的坑」):
 - 非 `Test` 账户 `ip_whitelist` 非空。
 - `PortfolioGroup`、`VipLevel`、`MarketMakerLevel`、`Client` 各最多一个(quant 的 `portfolio_group()` 只取第一个)。
 - `account_tags` 顶层标签只允许 `AccountTag` 已有的 14 种。结构复杂的 `ListingTagBlocklist`、`WalletBlocked`
   第一批不提供编辑,已有值原样保留。
 - `ip_whitelist` 的快捷填充来自 `app_setting.known_egress_ips`(`[{ip, label}]`,如 Neo 的 EIP),由 admin 维护。
-- 实现:约束在 `db/owner/002_authentication_rules.sql`(owner 执行);2026-09-29 核对生产 29 行全部满足。
-  前端与服务端共用 `src/shared/accounts.ts` 的同一套规则。
+- 实现:前端与服务端共用 `src/shared/accounts.ts` 的同一套规则;库上不加约束,账户只通过 v2 维护(2026-09-29
+  改判,原 `db/owner/002_authentication_rules.sql` 撤销,生产未执行过)。2026-09-29 核对生产 29 行全部满足。
 
 **写法**:
 - 新建:`INSERT`,`auth_id` 冲突时返回 409「This account already exists.」,不用 `ON CONFLICT DO UPDATE`。
@@ -412,12 +412,12 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 
 ## 6 迁移与测试
 
-- 迁移文件:`db/migrations/NNN_<name>.sql`,只前进,不写 down。涉及 quant 表的授权与约束放在
+- 迁移文件:`db/migrations/NNN_<name>.sql`,只前进,不写 down。涉及 quant 表的角色与授权放在
   `db/owner/NNN_<name>.sql`,不自动执行,由 owner 手工执行并在文件头记录执行日期。
 - 测试 PG:同一套迁移;另有 `tests/fixtures/quant-shapes.sql` 按 quant 实体建 `management.authentication`、
   `hft_config`、`hft_group_limit` 与 `verification` 三个视图的底表,并建 `omniboard_app` 角色和同样的按列授权,
   用来测「密钥列读不出」。
-- 必须有的测试:`omniboard_app` 执行 `SELECT api_secret` 失败;坏的 `account_tags` / 白名单写不进去;
+- 必须有的测试:`omniboard_app` 执行 `SELECT api_secret` 失败;坏的 `account_tags` / 白名单被 v2 拒绝(422);
   `audit_event` 不能 UPDATE / DELETE;`connector_request` 不能 UPDATE;同一 TOTP 验证码不能用两次。
 
 ## 已裁决(2026-09-29)
