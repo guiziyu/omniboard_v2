@@ -38,13 +38,25 @@ const privileges: Privilege[] = [
 
 export type SelfcheckResult = { schemaVersion: number | null; problems: string[] };
 export async function selfcheck(pool: Pool): Promise<SelfcheckResult> {
-  let version: number;
+  let user: string;
   try {
-    version = await schemaVersion(pool);
+    user = (await pool.query<{ user: string }>('SELECT current_user AS user')).rows[0]!.user;
   } catch (error) {
     return {
       schemaVersion: null,
       problems: [`PostgreSQL is not reachable: ${(error as Error).message}`],
+    };
+  }
+  let version: number;
+  try {
+    version = await schemaVersion(pool);
+  } catch (error) {
+    // 连上了但读不到 omniboard:多半是 QUANT_PG_URL 用了别的角色(例如 quant 的角色)。
+    return {
+      schemaVersion: null,
+      problems: [
+        `Connected as ${user}, which cannot read schema omniboard (${(error as Error).message}). QUANT_PG_URL must connect as omniboard_app.`,
+      ],
     };
   }
   const problems: string[] = [];

@@ -54,6 +54,13 @@ test('self-check: schema version, application grants, secrets not readable', asy
     /needs \d+\. Run npm run migrate from this release first\./,
   );
 
+  // 连上了但用错了角色(读不到 omniboard)。
+  await admin.query('REVOKE USAGE ON SCHEMA omniboard FROM omniboard_app');
+  assert.match(
+    (await selfcheck(db.pool)).problems[0]!,
+    /^Connected as omniboard_app, which cannot read schema omniboard .*QUANT_PG_URL must connect as omniboard_app\.$/,
+  );
+
   // 连不上 PG。
   const unreachable = openPool('postgresql://nobody@127.0.0.1:1/none', 1);
   t.after(() => unreachable.end());
