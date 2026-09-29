@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 审计日志(frontend-spec 12.10):仅 admin;筛选写在 URL;每页 50 条,「Load more」继续;
-// ?event=<id> 来自通知邮件,定位并展开该事件。
+// ?event=<id> 定位并展开该事件(留给通知邮件的链接;发邮件是 TODO,12.11)。
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, errorText, session } from '../api';
@@ -18,7 +18,6 @@ type Event = {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   stepUp: boolean;
-  notification: 'sent' | 'failed' | 'pending' | null;
 };
 const actionLabel: Record<string, string> = {
   'auth.create': 'Account created',
@@ -40,7 +39,6 @@ const actionLabel: Record<string, string> = {
   'agent_token.revoke': 'API token revoked',
   'login.locked': 'Sign-in locked',
 };
-const notificationLabel = { sent: 'Sent', failed: 'Failed', pending: 'Pending' } as const;
 const categories = [
   ['', 'All'],
   ['accounts', 'Accounts'],
@@ -168,7 +166,6 @@ function diff(event: Event) {
             <th>Action</th>
             <th>Target</th>
             <th>Step-up</th>
-            <th>Notification</th>
           </tr>
         </thead>
         <tbody>
@@ -185,10 +182,9 @@ function diff(event: Event) {
                 <code>{{ e.targetKey }}</code>
               </td>
               <td>{{ e.stepUp ? '✓' : '' }}</td>
-              <td>{{ e.notification ? notificationLabel[e.notification] : '—' }}</td>
             </tr>
             <tr v-if="expanded.has(e.id)" class="detail">
-              <td colspan="6">
+              <td colspan="5">
                 <p>
                   <code>{{ e.targetTable }}</code> · event {{ e.id }}
                 </p>

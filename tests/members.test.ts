@@ -3,21 +3,10 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { bootstrapAdmin } from '../src/server/auth';
 import { audit } from '../src/server/audit';
-import { deliverPending, type Message } from '../src/server/notifications';
-import { cookieOf, harness, origin, password, tokenOf } from './helpers';
+import { cookieOf, harness, password, tokenOf } from './helpers';
 
 test('team members, API tokens, security settings and the audit log', async (t) => {
-  const sent: Message[] = [];
-  let failNext = false;
-  const h = await harness({
-    sender: async (m) => {
-      if (failNext) {
-        failNext = false;
-        throw new Error('SES rejected the message');
-      }
-      sent.push(m);
-    },
-  });
+  const h = await harness();
   t.after(h.close);
   const { request } = h;
 
@@ -340,7 +329,7 @@ test('team members, API tokens, security settings and the audit log', async (t) 
     owner.cookie = cookieOf(newLogin);
   });
 
-  await t.test('audit log: filters, notification outbox, pagination, admin only', async () => {
+  await t.test('audit log: filters, owner-notification flag, pagination, admin only', async () => {
     const members = (
       await request('GET', '/api/audit?category=members', { cookie: owner.cookie })
     ).json();
@@ -356,54 +345,19 @@ test('team members, API tokens, security settings and the audit log', async (t) 
       ids,
       [...ids].sort((a, b) => b - a),
     );
-    const roleEvents = members.filter((e: { action: string }) => e.action === 'member.role');
-    // editor↔trader 通知;editor↔reader 不通知。
+    // editor↔trader 标记需通知 owner;editor↔reader 不标记(发邮件是 TODO,12.11)。
+    const roleEvents = await h.db.pool.query<{ before: string; after: string; notify: boolean }>(
+      `SELECT before->>'role' AS before, after->>'role' AS after, notify_required AS notify
+         FROM omniboard.audit_event WHERE action = 'member.role' ORDER BY id`,
+    );
     assert.deepEqual(
-      roleEvents
-        .map(
-          (e: {
-            before: { role: string };
-            after: { role: string };
-            notification: string | null;
-          }) => [e.before.role, e.after.role, e.notification],
-        )
-        .reverse(),
+      roleEvents.rows.map((e) => [e.before, e.after, e.notify]),
       [
-        ['editor', 'trader', 'pending'],
-        ['trader', 'editor', 'pending'],
-        ['editor', 'reader', null],
-        ['reader', 'editor', null],
+        ['editor', 'trader', true],
+        ['trader', 'editor', true],
+        ['editor', 'reader', false],
+        ['reader', 'editor', false],
       ],
-    );
-    failNext = true;
-    const delivered = await deliverPending(
-      h.db.pool,
-      async (m) => {
-        if (failNext) {
-          failNext = false;
-          throw new Error('SES rejected the message');
-        }
-        sent.push(m);
-      },
-      origin,
-    );
-    assert.ok(delivered >= 4);
-    assert.equal(await deliverPending(h.db.pool, undefined, origin), 0);
-    const after = (
-      await request('GET', '/api/audit?category=members', { cookie: owner.cookie })
-    ).json();
-    const states = after
-      .filter((e: { notification: string | null }) => e.notification)
-      .map((e: { notification: string }) => e.notification);
-    assert.ok(
-      states.includes('failed') && states.includes('sent') && !states.includes('pending'),
-      JSON.stringify(states),
-    );
-    assert.ok(!after.some((e: { action: string }) => e.action === 'notify_result'));
-    assert.ok(
-      sent.every(
-        (m) => m.subject.startsWith('[Omniboard] ') && m.text.includes('/w/internal/audit?event='),
-      ),
     );
 
     const byTarget = (

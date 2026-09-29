@@ -22,12 +22,6 @@
 - 证据原件存在 `omniboard.evidence_originals`(按 sha256 寻址),与元数据在同一事务里写入;应用只能读和新增。
 - 迁移期结束:`npm run cli -- close-import`,此后导入接口不再接受系统时间戳(data-model D6)。
 
-## 通知邮件
-
-影响实盘与权限的操作会给 owner 发邮件(frontend-spec 12.11)。在 `.env` 里配 `OMNIBOARD_NOTIFY_TO`、
-`OMNIBOARD_NOTIFY_FROM`、`OMNIBOARD_SMTP_URL`(任一服务商的 SMTP,默认要求 TLS),然后
-`npm run cli -- notify-test` 发一封测试邮件。不配时通知在审计页记为 Failed,不影响操作。
-
 ## 首个管理员
 
 ```bash
@@ -50,8 +44,7 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
   图谱人员名称到人才库的链接与返回时的状态恢复(7.7、7.8);机构选择器、机构对比与字段对比矩阵、
   Compliance 规则矩阵(2.15、4.5、4.6、5.8);情报收件箱、情报详情、关注机构与活动历史(8.1–8.4),
   任务详情的「Open source information」改为打开情报详情;数据来源页、CMC / CoinGecko 排行页采集、每日采集、
-  来源身份映射与机构选择器的「只查交易所」(9.4–9.7、2.15);证据原件存 PG(data-model §1);通知邮件走 SMTP
-  (12.11、D5)。
+  来源身份映射与机构选择器的「只查交易所」(9.4–9.7、2.15);证据原件存 PG(data-model §1)。
 - 所有模块标签页都已可用。
 - 数据来源:
   - 导入顺序:机构 → 别名 → `POST /api/import/source-links`(保留 v1 的来源档案与人工映射),然后才做第一次采集;
@@ -63,3 +56,5 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
 - `capital_scenarios`(data-model §3.3)在 v1 只有接口、没有页面,前端规格也没有对应界面,暂不移植;活动历史里
   v1 导入的 scenario 事件照常跳到 Capital Optimization 标签页。
 - 其他待办:交易账户与 HFT(12.7–12.9)、v2 新页面的中文与韩文译文。
+- TODO(低优先级):通知邮件(frontend-spec 12.11、data-model D5)。发送通道未定,已写好的 outbox 先移除;
+  需要通知的审计事件仍标记 `notify_required`。

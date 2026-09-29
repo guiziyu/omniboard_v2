@@ -19,7 +19,6 @@ export const auditActions = [
   'agent_token.create',
   'agent_token.revoke',
   'login.locked',
-  'notify_result',
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
 export type Actor = {
@@ -35,7 +34,7 @@ export type AuditEvent = {
   before?: unknown;
   after?: unknown;
   stepUp: boolean;
-  /** 需要通知 owner(frontend-spec 12.11),提交后由 outbox 发送。 */
+  /** 需要通知 owner(frontend-spec 12.11)。邮件发送是 TODO,目前只标记。 */
   notify?: boolean;
 };
 // 密钥列即使被误传进来也不落审计(frontend-spec 12.7「没有任何密钥明文」)。
@@ -100,11 +99,10 @@ export type AuditRow = {
   before: unknown;
   after: unknown;
   stepUp: boolean;
-  notification: 'sent' | 'failed' | 'pending' | null;
 };
 export const AUDIT_PAGE = 50;
 export async function listAudit(pool: Pool, query: AuditQuery): Promise<AuditRow[]> {
-  const where = ["e.action <> 'notify_result'"];
+  const where: string[] = [];
   const params: unknown[] = [];
   const add = (sql: string, value: unknown) => {
     params.push(value);
@@ -126,15 +124,11 @@ export async function listAudit(pool: Pool, query: AuditQuery): Promise<AuditRow
   const result = await pool.query<AuditRow>(
     `SELECT e.id, e.at, e.actor_id AS "actorId", m.name AS "actorName", e.via,
             t.name AS "agentTokenName", e.action, e.target_table AS "targetTable",
-            e.target_key AS "targetKey", e.before, e.after, e.step_up AS "stepUp",
-            CASE WHEN NOT e.notify_required THEN NULL
-                 ELSE COALESCE(n.after->>'result', 'pending') END AS notification
+            e.target_key AS "targetKey", e.before, e.after, e.step_up AS "stepUp"
        FROM omniboard.audit_event e
        JOIN omniboard.member m ON m.id = e.actor_id
        LEFT JOIN omniboard.agent_token t ON t.id = e.agent_token_id
-       LEFT JOIN omniboard.audit_event n
-              ON n.action = 'notify_result' AND (n.after->>'eventId')::bigint = e.id
-      WHERE ${where.join(' AND ')}
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY e.id DESC
       LIMIT ${AUDIT_PAGE}`,
     params,

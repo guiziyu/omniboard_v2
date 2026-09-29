@@ -285,7 +285,7 @@ CREATE TABLE omniboard.audit_event (
   id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   at           timestamptz NOT NULL DEFAULT now(),
   actor_id     text NOT NULL REFERENCES omniboard.member(id),
-  via          text NOT NULL CHECK (via IN ('session','agent_token','cli','system')),  -- cli:bootstrap-admin;system:notify_result
+  via          text NOT NULL CHECK (via IN ('session','agent_token','cli','system')),  -- cli:bootstrap-admin;system:留给通知结果
   agent_token_id text REFERENCES omniboard.agent_token(id),
   action       text NOT NULL,     -- 枚举见下
   target_table text NOT NULL,     -- 如 management.authentication
@@ -293,21 +293,23 @@ CREATE TABLE omniboard.audit_event (
   before       jsonb,             -- 密钥列一律写成 {"changed": true} / 不出现,不写值
   after        jsonb,
   step_up      boolean NOT NULL,  -- 是否当场重新输入了 TOTP
-  notify_required boolean NOT NULL  -- 需要通知 owner(frontend-spec 12.11)
+  notify_required boolean NOT NULL  -- 需要通知 owner(frontend-spec 12.11;发送是 TODO,目前只标记)
 );
 ```
 
 - 与业务写入同一事务提交(proposal §4)。
-- 通知走 outbox:需要通知的事件写 `notify_required=true`;提交后由发送器取出尚无结果的事件发送,
-  结果另写一条 `action='notify_result'`、`via='system'` 的事件(`after` = `{eventId, result, error?}`),
-  失败不重试。写请求结束时触发一次,服务进程每分钟补投一次。审计页把两条合并成 Sent / Failed / Pending。
-  发送在投递事务里进行,SMTP 连接与问候各 5 秒超时,服务器无响应时记为 failed 而不是一直占着事务。
+- 需要通知 owner 的事件写 `notify_required=true`(与业务同事务)。
+- **TODO(低优先级):通知邮件的发送。** 2026-09-29 移除了已写好的 outbox 与发送器:发送通道没定(D5),
+  又不想绑定某家云的服务。做的时候按 outbox 来:提交后取出尚无结果的 `notify_required` 事件发送,结果另写
+  一条 `action='notify_result'`、`via='system'` 的事件(`after` = `{eventId, result, error?}`),失败不重试;
+  审计页加 Notification 列(Sent / Failed / Pending)。只投递功能上线之后的事件,不补发历史。
+  `001` 里的 `audit_event_notify_result` 索引就是给它留的。
 - 写入前按字段名脱敏:`api_key`、`api_secret`、`api_pass`、`password`、`passphrase`(含驼峰写法)的值一律写成
   `"changed"`,即使调用方误传也不落库。
 - `action` 取值:`auth.create`、`auth.update_tags`、`auth.update_whitelist`、`auth.update_owner`、`auth.rotate_key`、
   `auth.terminate`、`hft_config.update`、`hft_config.create`、`hft_restart.request`、`member.invite`、`member.role`、
   `member.disable`、`member.enable`、`member.reset_totp`、`session.revoke`、`agent_token.create`、`agent_token.revoke`、
-  `login.locked`、`notify_result`。
+  `login.locked`(通知结果的 `notify_result` 随上面的 TODO 一起加)。
 - 业务数据(记录、任务等)的编辑历史仍在 `edit_history`,不重复进审计。
 
 ### 4.3 key 指纹
@@ -420,6 +422,6 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 | D2 | `hft_config` 真值:quant 文档写 YAML 是真值、`sync_hft_config` 是唯一写入方;v2 直接改库后两者分叉,下一次 `sync --apply` 会覆盖界面改动 | v2 上线后库为真值;`sync_hft_config` 改为只读对比(或删除),YAML 退役;列入 proposal §7 quant 改动 |
 | D3 | 「恰有一个 `TradingSystem`」是否适用于 Test / ReadOnly / Terminated 账户(quant 只在交易入口要求,解析不要求) | 作废(2026-09-29):quant 已删除 `TradingSystem` 标签 |
 | D4 | 第一批还没有 `hft-launcher`,不知道当前 HFT 进程的启动时间,无法判断「已改,重启后生效」 | 第一批只显示 `update_at` 和固定提示「改动在下次重启后生效」;第二批按 4.4 比较 |
-| D5 | 给 owner 发通知邮件的通道 | 标准 SMTP,不绑定邮件服务商;连接串(含账号)只放本仓库 `.env`,默认要求 TLS。没配置时通知记为 `failed`,不阻塞操作(2026-09-29 改判,原为 AWS SES + 实例角色:不让应用依赖某家云的服务) |
+| D5 | 给 owner 发通知邮件的通道 | **待定(TODO,低优先级)**。原裁决 AWS SES,2026-09-29 撤回:不让应用依赖某家云的服务;标准 SMTP 是候选。发送功能先移除,事件只标记 `notify_required`(4.2) |
 | D6 | proposal §9 不迁移系统时间戳,导入后所有记录的 `updated_at` 都是导入时刻,「按更新时间排序」「最近变化」会失真 | 允许导入接口在 admin 令牌下写入 `created_at` / `updated_at`,仅迁移期开放。实现:同样适用于证据与观测的 `captured_at`;窗口是 `app_setting.import_open`,切换后 `npm run cli -- close-import` 关闭;窗口外或非 admin 令牌传入时间戳返回 403,不静默忽略 |
 | D7 | 只读角色的范围:proposal 说 agent 可读 `omniboard` schema,但其中有会话、TOTP、令牌表 | 只读角色排除 4.1 的表 |

@@ -2578,18 +2578,21 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 
 ### 12.10 审计日志(`/w/internal/audit`)
 - 入口:侧栏 Administration 下的「Audit log」,仅 admin。
-- 列表:Time、Actor(令牌调用时加「via token <name>」)、Action(可读标签)、Target、Step-up(✓)、Notification
-  (Sent / Failed / Pending / —)。时间倒序,每页 50 条,「Load more」继续。
+- 列表:Time、Actor(令牌调用时加「via token <name>」)、Action(可读标签)、Target、Step-up(✓)。
+  时间倒序,每页 50 条,「Load more」继续。Notification 列(Sent / Failed / Pending / —)随 12.11 一起做。
 - `?event=<id>`(通知邮件里的链接):从该事件开始列出并展开它。
 - 筛选:Actor、Action 类别(Accounts / HFT / Members / Tokens / Login)、Target 文本、时间范围。筛选写在 URL query。
 - 展开一行显示改前 / 改后字段对照;密钥列只显示「changed」。
 - 只读,没有删除或编辑入口。
 
-### 12.11 通知邮件
+### 12.11 通知邮件(TODO,低优先级)
+
+暂不实现:发送通道未定(data-model D5)。需要通知的事件已在审计里标记,做的时候按下面的规格补上发送。
+
 - 收件人:owner(`OMNIBOARD_NOTIFY_TO`,可多个)。触发:12.1 列出的影响实盘的操作、成员角色涉及 trader / admin 的变更、
   停用成员、重置验证器、登录锁定。
 - 内容:操作人、时间(UTC)、动作、目标、改前 / 改后摘要(不含密钥)、审计链接。标题前缀 `[Omniboard]`。
-- 发送在事务提交之后,经标准 SMTP(任一邮件服务商);失败不回滚业务操作,在审计里记为 Failed(D5)。
+- 发送在事务提交之后;失败不回滚业务操作,在审计里记为 Failed(D5)。
 
 ### 12.12 导航与路由增补
 - 侧栏在 Connectors 之后新增分组「Trading」:Accounts、HFT config(trader / admin 可见)。Administration 分组增加

@@ -43,7 +43,6 @@ import {
   tokenPrincipal,
   tokenRoles,
 } from './tokens';
-import { deliverPending, type Sender } from './notifications';
 import { expectedVersion, schemaVersion } from './migrate';
 import { requireInteractive, requireRole } from './access';
 import { registerOrganizationRoutes } from './organization-routes';
@@ -62,10 +61,6 @@ export type AppOptions = {
   logger?: boolean;
   serveStatic?: boolean;
   development?: boolean;
-  /** 通知发送通道(D5);undefined = 未配置,结果记为 failed。 */
-  sender?: Sender;
-  /** 写请求结束后自动投递通知;测试里关掉,手动调用 deliverPending。 */
-  autoNotify?: boolean;
   /** 排行页抓取(frontend-spec 9.7);测试用本地样本页代替。 */
   sourceFetcher?: Fetcher;
 };
@@ -393,14 +388,6 @@ export async function buildApp(options: AppOptions) {
   registerSourceRoutes(app, { ...deps, fetcher: options.sourceFetcher });
   // 关闭前等后台采集写完运行记录。
   app.addHook('onClose', async () => waitForCollections());
-
-  if (options.autoNotify !== false)
-    app.addHook('onResponse', async (request) => {
-      if (writeMethods.has(request.method))
-        void deliverPending(options.pool, options.sender, options.origin).catch((e) =>
-          request.log.error(e),
-        );
-    });
 
   const dist = resolve('dist');
   if (options.serveStatic !== false && existsSync(dist)) {

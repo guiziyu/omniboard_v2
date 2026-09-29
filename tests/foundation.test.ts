@@ -37,11 +37,9 @@ test('migrations, activation, TOTP login, sessions, lockout, step-up and audit',
   const app = await buildApp({
     pool: db.pool,
     totpKey: key,
-    // 本文件不涉及证据;目录不存在也不会被访问。
     origin,
     now: () => clock,
     serveStatic: false,
-    autoNotify: false,
   });
   t.after(async () => {
     await app.close();

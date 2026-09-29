@@ -1174,25 +1174,11 @@ test('workspace access pages', async ({ page }) => {
     await expect(page.getByRole('row', { name: /Tia Trader/ })).toContainText('trader');
   });
 
-  await test.step('audit log: events, notification email link, filters in the URL', async () => {
+  await test.step('audit log: events, expand, filters in the URL', async () => {
     await page.getByRole('link', { name: 'Audit log' }).click();
     const roleRow = page.getByRole('row', { name: /Role changed/ });
     await expect(roleRow).toBeVisible();
-    // 写请求结束后 outbox 经 SMTP 投递(12.11);页面不自动刷新,重新载入直到记为 Sent。
-    await expect(async () => {
-      await page.reload();
-      await expect(roleRow).toContainText('Sent', { timeout: 1000 });
-    }).toPass();
-    // 邮件里的审计链接:定位并展开该事件(12.10)。
-    const mails: { subject: string; text: string }[] = JSON.parse(
-      readFileSync('test-results/mail.json', 'utf8'),
-    );
-    const mail = mails.find((m) => m.subject.startsWith('[Omniboard] member.role'))!;
-    const link = new URL(/^Audit log: (\S+)$/m.exec(mail.text)![1]!);
-    await page.goto(link.pathname + link.search);
-    await expect(
-      page.getByText(`omniboard.member · event ${link.searchParams.get('event')}`),
-    ).toBeVisible();
+    await roleRow.click();
     await expect(page.getByRole('row', { name: 'role editor trader', exact: true })).toBeVisible();
     await page.getByLabel('Category').selectOption('login');
     await page.getByRole('button', { name: 'Apply' }).click();

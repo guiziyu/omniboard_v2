@@ -1,6 +1,5 @@
 import { buildApp } from '../src/server/app';
 import { codeAt, stepAt } from '../src/server/totp';
-import type { Sender } from '../src/server/notifications';
 import type { Fetcher } from '../src/server/collect';
 import { createHash } from 'node:crypto';
 import type { Pool } from '../src/server/db';
@@ -26,8 +25,8 @@ type Injected = { cookies: { name: string; value: string }[] };
 export const cookieOf = (res: Injected) =>
   `omniboard_session=${res.cookies.find((c) => c.name === 'omniboard_session')!.value}`;
 export const tokenOf = (link: string) => new URL(link).searchParams.get('token')!;
-/** 测试环境:新库 + 可拨动的时钟 + 关闭自动通知的应用。 */
-export async function harness(options: { sender?: Sender; sourceFetcher?: Fetcher } = {}) {
+/** 测试环境:新库 + 可拨动的时钟。 */
+export async function harness(options: { sourceFetcher?: Fetcher } = {}) {
   const db = await createTestDb();
   const key = Buffer.alloc(32, 9);
   const clock = { now: Date.parse('2026-09-29T00:00:00Z') };
@@ -38,9 +37,7 @@ export async function harness(options: { sender?: Sender; sourceFetcher?: Fetche
     origin,
     now,
     serveStatic: false,
-    autoNotify: false,
     logger: process.env.TEST_LOG === '1',
-    sender: options.sender,
     sourceFetcher: options.sourceFetcher,
   });
   const ctx = { pool: db.pool, totpKey: key, now };

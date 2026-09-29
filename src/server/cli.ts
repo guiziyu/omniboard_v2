@@ -1,9 +1,8 @@
 import { parseArgs } from 'node:util';
-import { appConfig, loadEnv, notifyConfig, required } from './config';
+import { appConfig, loadEnv, required } from './config';
 import { openPool } from './db';
 import { bootstrapAdmin, inviteLink } from './auth';
 import { expectedVersion, migrate, schemaVersion } from './migrate';
-import { smtpSender } from './notifications';
 const [command, ...rest] = process.argv.slice(2);
 async function main() {
   switch (command) {
@@ -22,12 +21,6 @@ async function main() {
         if (version !== expectedVersion())
           throw new Error(`Schema version ${version}, expected ${expectedVersion()}.`);
         console.log(`OK: PostgreSQL reachable, schema version ${version}.`);
-        // 通知不阻塞操作(D5),所以只提示、不判失败;真实发信用 notify-test。
-        console.log(
-          config.notify
-            ? `Notifications: SMTP to ${config.notify.to.join(', ')}.`
-            : 'Notifications: not configured, events will be recorded as failed.',
-        );
       } finally {
         await pool.end();
       }
@@ -55,18 +48,6 @@ async function main() {
       }
       return;
     }
-    case 'notify-test': {
-      // 配好 SMTP 后发一封测试邮件给全部收件人,不写审计。
-      loadEnv();
-      const notify = notifyConfig();
-      if (!notify) throw new Error('OMNIBOARD_NOTIFY_TO is not set. See .env.example.');
-      await smtpSender(notify)({
-        subject: '[Omniboard] Test notification',
-        text: 'Notification email is configured. Sent by npm run cli -- notify-test.',
-      });
-      console.log(`Sent to ${notify.to.join(', ')}.`);
-      return;
-    }
     case 'close-import': {
       // 切换后关闭迁移窗口:此后任何调用方都不能写入系统时间(proposal §9、D6)。
       const config = appConfig();
@@ -83,7 +64,7 @@ async function main() {
     }
     default:
       throw new Error(
-        'Commands: migrate | selfcheck | bootstrap-admin --name <name> --email <email> | notify-test | close-import',
+        'Commands: migrate | selfcheck | bootstrap-admin --name <name> --email <email> | close-import',
       );
   }
 }
