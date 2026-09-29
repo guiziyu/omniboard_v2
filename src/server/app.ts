@@ -53,6 +53,8 @@ import { registerWorkRoutes } from './work-routes';
 import { registerTalentRoutes } from './talent-routes';
 import { registerIntegrationRoutes } from './integration-routes';
 import { registerIntelligenceRoutes } from './intelligence';
+import { registerSourceRoutes } from './source-routes';
+import { waitForCollections, type Fetcher } from './collect';
 export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
@@ -67,6 +69,8 @@ export type AppOptions = {
   sender?: Sender;
   /** 写请求结束后自动投递通知;测试里关掉,手动调用 deliverPending。 */
   autoNotify?: boolean;
+  /** 排行页抓取(frontend-spec 9.7);测试用本地样本页代替。 */
+  sourceFetcher?: Fetcher;
 };
 const COOKIE = 'omniboard_session';
 // 不需要会话的接口。
@@ -389,6 +393,9 @@ export async function buildApp(options: AppOptions) {
   registerTalentRoutes(app, deps);
   registerIntegrationRoutes(app, deps);
   registerIntelligenceRoutes(app, deps);
+  registerSourceRoutes(app, { ...deps, fetcher: options.sourceFetcher });
+  // 关闭前等后台采集写完运行记录。
+  app.addHook('onClose', async () => waitForCollections());
 
   if (options.autoNotify !== false)
     app.addHook('onResponse', async (request) => {

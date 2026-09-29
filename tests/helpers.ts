@@ -1,6 +1,7 @@
 import { buildApp } from '../src/server/app';
 import { codeAt, stepAt } from '../src/server/totp';
 import type { Sender } from '../src/server/notifications';
+import type { Fetcher } from '../src/server/collect';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,22 +29,24 @@ export const cookieOf = (res: Injected) =>
   `omniboard_session=${res.cookies.find((c) => c.name === 'omniboard_session')!.value}`;
 export const tokenOf = (link: string) => new URL(link).searchParams.get('token')!;
 /** 测试环境:新库 + 可拨动的时钟 + 关闭自动通知的应用。 */
-export async function harness(options: { sender?: Sender } = {}) {
+export async function harness(options: { sender?: Sender; sourceFetcher?: Fetcher } = {}) {
   const db = await createTestDb();
   const key = Buffer.alloc(32, 9);
   const clock = { now: Date.parse('2026-09-29T00:00:00Z') };
   const now = () => clock.now;
   const evidenceDir = mkdtempSync(join(tmpdir(), 'omniboard-evidence-'));
+  const store = directoryStore(evidenceDir);
   const app = await buildApp({
     pool: db.pool,
     totpKey: key,
-    evidence: directoryStore(evidenceDir),
+    evidence: store,
     origin,
     now,
     serveStatic: false,
     autoNotify: false,
     logger: process.env.TEST_LOG === '1',
     sender: options.sender,
+    sourceFetcher: options.sourceFetcher,
   });
   const ctx = { pool: db.pool, totpKey: key, now };
   const tick = () => (clock.now += 30_000);
@@ -87,5 +90,5 @@ export async function harness(options: { sender?: Sender } = {}) {
     await db.drop();
     rmSync(evidenceDir, { recursive: true, force: true });
   };
-  return { db, app, ctx, clock, tick, code, request, activate, login, close };
+  return { db, app, store, ctx, clock, tick, code, request, activate, login, close };
 }

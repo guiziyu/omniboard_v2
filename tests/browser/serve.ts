@@ -1,5 +1,5 @@
 // 浏览器用例的服务端:新测试库 + 首个管理员邀请 + 真实时钟的应用(提供 dist 静态页)。
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../../src/server/app';
@@ -24,11 +24,18 @@ const invited = await bootstrapAdmin(
 mkdirSync('test-results', { recursive: true });
 writeFileSync('test-results/browser-state.json', JSON.stringify({ inviteToken: invited.token }));
 const evidenceDir = mkdtempSync(join(tmpdir(), 'omniboard-evidence-'));
+// 排行页用仓库里的样本页,延迟 1 秒返回,页面能看到「采集中」。
+const sourceFetcher = async (url: string) => {
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  const source = url.includes('coingecko') ? 'coingecko_web' : 'cmc_web';
+  return { bytes: readFileSync(`tests/fixtures/${source}.html`), contentType: 'text/html' };
+};
 const app = await buildApp({
   pool: db.pool,
   totpKey: key,
   origin,
   evidence: directoryStore(evidenceDir),
+  sourceFetcher,
 });
 const stop = async () => {
   await app.close();

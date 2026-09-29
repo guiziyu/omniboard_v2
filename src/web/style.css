@@ -3487,3 +3487,84 @@ a.context-link {
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
+/* 数据来源页(frontend-spec 9.5–9.7) */
+.source-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.source-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.source-card header,
+.source-card footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.source-card footer {
+  align-items: center;
+  margin-top: auto;
+}
+.source-card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.source-card small {
+  display: block;
+}
+.source-card .collect-now {
+  margin-left: auto;
+}
+.collection-numbers {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+.collection-numbers > strong {
+  font-size: 28px;
+  line-height: 1.1;
+}
+.collection-numbers > strong small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.collection-numbers > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.section-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+}
+.section-card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.section-card td small {
+  display: block;
+}
+.mapping-heading input {
+  max-width: 240px;
+}
+@media (max-width: 640px) {
+  .collection-numbers,
+  .mapping-heading {
+    flex-direction: column;
+  }
+  .mapping-heading input {
+    max-width: none;
+    width: 100%;
+  }
+}

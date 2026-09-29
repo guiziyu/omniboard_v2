@@ -84,8 +84,10 @@ async function logout() {
         </RouterLink>
         <RouterLink to="/w/internal/talent">Talent directory</RouterLink>
         <RouterLink to="/w/internal/connectors">Connectors</RouterLink>
+        <!-- Data sources 所有角色可见,管理操作在页内限 admin(frontend-spec 2.3、9.5)。 -->
+        <p class="group">Administration</p>
+        <RouterLink to="/w/internal/sources">Data sources</RouterLink>
         <template v-if="isAdmin">
-          <p class="group">Administration</p>
           <RouterLink to="/w/internal/members">Team members</RouterLink>
           <RouterLink to="/w/internal/audit">Audit log</RouterLink>
         </template>

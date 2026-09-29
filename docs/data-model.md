@@ -71,6 +71,11 @@
   在同一时刻的多条观测之间决定先后(frontend-spec 9.1)。
 - `collection_runs.snapshot_id` 改名 `evidence_id`。
 - 导入接口以 id 幂等:同 id 同内容视为已导入;同 id 不同内容返回 409。
+- `source_entity_links` 经 `POST /api/import/source-links`(`{id, source, slug, organizationId, name, url, mappedBy}`)
+  导入:机构按规范机构记,必须带 exchange tag(422);同一机构对同一来源只能有一个链接(409)。
+- 采集运行(frontend-spec 9.7)不再记 `process_id`:服务持有单实例锁启动时,把遗留的 `running` 改为 `interrupted`;
+  发布事务只在运行仍为 `running` 时把它改为 `success`,否则整批回滚。数据库错误写入 `error` 时统一替换为
+  「Data processing failed. This batch was not published.」,原文只进日志。
 
 ### 3.2 机构
 

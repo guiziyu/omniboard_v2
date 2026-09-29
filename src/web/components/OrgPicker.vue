@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // 机构选择器(frontend-spec 2.15),从 v1 OrgPicker.vue 迁移:输入即搜索,旧响应丢弃,最多 30 条。
+// exchangeOnly:只查带 exchange tag 的机构(来源映射 9.6)。
 import { ref, watch } from 'vue';
 import { api, errorText } from '../api';
 import { tr } from '../i18n';
 import { shortSource } from '../labels';
 import type { DirectoryOrganization } from '../../shared/columns';
 import OrgLogo from './OrgLogo.vue';
-const props = defineProps<{ exclude?: string }>();
+const props = defineProps<{ exclude?: string; exchangeOnly?: boolean }>();
 const emit = defineEmits<{ select: [org: DirectoryOrganization] }>();
 const q = ref('');
 const results = ref<DirectoryOrganization[]>([]);
@@ -21,7 +22,7 @@ watch(
     error.value = '';
     try {
       const response = await api<{ organizations: DirectoryOrganization[] }>(
-        `/api/organizations?q=${encodeURIComponent(q.value)}&pageSize=30`,
+        `/api/organizations?q=${encodeURIComponent(q.value)}&pageSize=30${props.exchangeOnly ? '&tag=exchange' : ''}`,
       );
       if (current === serial)
         results.value = response.organizations.filter((o) => o.id !== props.exclude);

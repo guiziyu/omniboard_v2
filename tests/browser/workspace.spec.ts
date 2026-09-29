@@ -1090,6 +1090,60 @@ test('workspace access pages', async ({ page }) => {
     await nav.getByRole('link', { name: 'Organizations' }).click();
   });
 
+  await test.step('data sources: collect, activity, original page, identity mapping', async () => {
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    const count = nav.locator('.count');
+    const before = Number(await count.textContent());
+    await nav.getByRole('link', { name: 'Data sources' }).click();
+    await expect(page.getByRole('heading', { name: 'Data sources', level: 1 })).toBeVisible();
+    const cmc = page.getByRole('article', { name: 'CoinMarketCap' });
+    await expect(cmc).toContainText('Awaiting collection');
+    await expect(cmc).toContainText('No successful batch yet');
+    await expect(
+      page.getByText('No collection runs yet. An administrator can start one above.'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Daily collection: Off' }).click();
+    await page.getByRole('button', { name: 'Daily collection: On' }).click();
+    await expect(page.getByRole('button', { name: 'Daily collection: Off' })).toBeVisible();
+
+    // 样本页延迟 1 秒返回:运行期间两个按钮都禁用;结束后全局机构数随之更新。
+    await cmc.getByRole('button', { name: 'Collect now' }).click();
+    await expect(page.getByRole('button', { name: 'Collection in progress' })).toHaveCount(2);
+    await expect(
+      page.getByRole('button', { name: 'Collection in progress' }).first(),
+    ).toBeDisabled();
+    await expect(cmc).toContainText('Succeeded');
+    await expect(cmc).toContainText('50 valid source records');
+    await expect(page.getByRole('button', { name: 'Collect now' })).toHaveCount(2);
+    await expect(count).toHaveText(String(before + 50));
+    const run = page.getByRole('row', { name: /CoinMarketCap .* Succeeded 50/ });
+    await run.getByRole('button', { name: 'Original page ↗' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Original reference' });
+    await expect(drawer).toContainText('cmc-html-v1');
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden();
+
+    // 身份映射:只能选交易所;选中即保存。
+    await page.getByLabel('Filter source mappings').fill('binance');
+    await expect(page.getByRole('row', { name: /^Binance\.US / })).toBeVisible();
+    const binance = page.getByRole('row', { name: /^Binance binance / });
+    await expect(binance).toContainText('Independent source profile');
+    await binance.getByRole('button', { name: 'Review / change mapping →' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Link to an organization' });
+    await expect(dialog).toContainText('CoinMarketCap / Binance');
+    const search = dialog.getByLabel('Search organizations to select');
+    await expect(search).toBeFocused();
+    await search.fill('Beta');
+    await expect(dialog.getByText('No matching organizations')).toBeVisible();
+    await search.fill('Acme');
+    await dialog.getByRole('button', { name: /Acme Exchange/ }).click();
+    await expect(dialog).toBeHidden();
+    await expect(binance).toContainText('Acme Exchange');
+    await expect(binance).toContainText('Reviewed');
+    // 原机构保留为独立档案(9.6)。
+    await expect(count).toHaveText(String(before + 50));
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

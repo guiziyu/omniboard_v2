@@ -4,6 +4,7 @@ import { buildApp } from './app';
 import { expectedVersion, schemaVersion } from './migrate';
 import { deliverPending } from './notifications';
 import { directoryStore } from './evidence';
+import { dailyCollection, recoverRuns } from './collect';
 const config = appConfig();
 const pool = openPool(config.pgUrl);
 // 结构版本不符就不启动(deploy.sh 同样自检,proposal §3)。
@@ -23,10 +24,13 @@ if (!locked.rows[0]!.ok) {
   console.error('Another Omniboard server is running against this database.');
   process.exit(1);
 }
+// 持有锁后,上次遗留的采集运行不可能还在跑(frontend-spec 9.7)。
+await recoverRuns(pool);
+const evidence = directoryStore(config.evidenceDir);
 const app = await buildApp({
   pool,
   totpKey: config.totpKey,
-  evidence: directoryStore(config.evidenceDir),
+  evidence,
   origin: config.origin,
   logger: true,
   development: config.development,
@@ -38,11 +42,21 @@ const notifyTimer = setInterval(
   60_000,
 );
 notifyTimer.unref();
+// 每日采集(9.7):开关在数据来源页,默认关闭。
+const collectTimer = setInterval(
+  () =>
+    void dailyCollection(pool, evidence, Date.now(), { log: app.log }).catch((e: unknown) =>
+      app.log.error(e),
+    ),
+  60_000,
+);
+collectTimer.unref();
 let closing = false;
 async function stop() {
   if (closing) return;
   closing = true;
   clearInterval(notifyTimer);
+  clearInterval(collectTimer);
   await app.close();
   lockClient.release();
   await pool.end();
