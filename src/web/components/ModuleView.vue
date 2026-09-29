@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 一个模块 tab 的内容(frontend-spec 4.3、4.4、5.1、5.2、5.4),从 v1 ModuleView.vue 迁移。
-// 尚未迁移的专用面板(registry.ts pendingModules)显示「正在迁移」;共享对象链接、跟进任务、
-// 联系人对话记录随关系(§7)、工作台(§10)、讨论(5.9)一起迁移。
+// 尚未迁移的专用面板(registry.ts pendingModules)显示「正在迁移」;共享对象链接、跟进任务
+// 随关系(§7)、工作台(§10)一起迁移。
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { atLeast, session } from '../api';
@@ -28,6 +28,8 @@ import {
   readableTitle,
   reviewPresentation,
 } from '../presentation';
+import AppDialog from './AppDialog.vue';
+import DiscussionPanel from './DiscussionPanel.vue';
 import Icon from './Icon.vue';
 import OrgChart from './OrgChart.vue';
 import OrganizationOverview from './OrganizationOverview.vue';
@@ -60,6 +62,8 @@ const displayed = computed(() =>
     ? records.value.filter((r) => contactGroup(r) === contactFilter.value)
     : records.value,
 );
+// 联系人对话记录(5.9):列出关联到该联系人的讨论。
+const contactHistory = ref<ModuleRecord>();
 const copyStatus = ref('');
 async function copyContact(record: ModuleRecord) {
   try {
@@ -200,7 +204,12 @@ const showList = computed(
           <h3>{{ tr(tab.title) }}</h3>
           <p class="hint">{{ tr(tab.description) }}</p>
         </div>
-        <button v-if="tab.kind !== 'stats' && canEdit" type="button" class="ghost" @click="edit()">
+        <button
+          v-if="!['stats', 'comments'].includes(tab.kind) && canEdit"
+          type="button"
+          class="ghost"
+          @click="edit()"
+        >
           <Icon name="plus" :size="16" />
           {{ tab.kind === 'chart' ? tr('Add person') : tr('Add record') }}
         </button>
@@ -217,6 +226,13 @@ const showList = computed(
         @edit="edit"
         @history="historyFor = $event"
         @refresh="emit('refresh')"
+      />
+      <DiscussionPanel
+        v-if="tab.kind === 'comments'"
+        :organization="organization"
+        :records="records"
+        @refresh="emit('refresh')"
+        @edit="edit"
       />
       <PeopleMovements
         v-if="tab.kind === 'timeline' && records.length"
@@ -318,6 +334,14 @@ const showList = computed(
                 @click.stop.prevent="copyContact(record)"
               >
                 <Icon name="copy" :size="15" />
+              </button>
+              <button
+                type="button"
+                class="ghost"
+                :aria-label="tr('Conversation history for {0}', [recordPrimary(record)])"
+                @click.stop.prevent="contactHistory = record"
+              >
+                <Icon name="clock" :size="15" />
               </button>
             </span>
           </summary>
@@ -437,6 +461,15 @@ const showList = computed(
         emit('refresh');
       "
     />
+    <AppDialog
+      v-if="contactHistory"
+      :eyebrow="tr('Conversation history')"
+      :title="contactHistory.personName || contactHistory.title"
+      wide
+      @close="contactHistory = undefined"
+    >
+      <DiscussionPanel :organization="organization" :records="[]" :contact="contactHistory" />
+    </AppDialog>
     <RecordHistory
       v-if="historyFor"
       :record-id="historyFor"

@@ -21,6 +21,7 @@ import type {
 } from '../shared/types';
 import { getOrganizationProfile } from './profiles';
 import { lockChart, saveRelationship, validateReportsTo } from './org-chart';
+import { validateDiscussionReferences } from './discussion';
 // 模块数据与记录(frontend-spec 4.3、5.1–5.6;data-model §3.3)。
 
 /** 各来源最近一次成功采集中该机构的观测;history=true 时取全部成功批次(最多 200 行)。 */
@@ -289,6 +290,14 @@ export async function saveRecord(
       problem(422, 'Only an existing record can retain its reference.');
     if (!input.reuseReference && !input.evidenceId && !input.rawText.trim())
       problem(422, 'Original reference text is required.');
+    if (tabId === 'comments')
+      await validateDiscussionReferences(
+        client,
+        org.id,
+        structured,
+        input.visibility,
+        existing?.id ?? input.id,
+      );
     if ((tabId === 'api_optimization' || tabId === 'tech_stack') && structured.sourceId) {
       const clash = await client.query(
         `SELECT 1 FROM omniboard.module_records

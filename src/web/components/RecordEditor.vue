@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 记录编辑器(frontend-spec 5.6;组织架构 6.4、人员变动 6.8),从 v1 RecordEditor.vue 迁移。
-// 讨论的专属字段随讨论(5.9)一起迁移。
+// 讨论(5.9)的编辑:只改正文,正文本身作为新的原引用保存。
 import { computed, onUnmounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, errorText, session } from '../api';
@@ -27,6 +27,7 @@ const props = defineProps<{
 }>();
 const chart = props.tab.kind === 'chart';
 const timeline = props.tab.kind === 'timeline';
+const comments = props.tab.kind === 'comments';
 const emit = defineEmits<{ close: []; saved: [] }>();
 const form = reactive({
   title: props.record?.title || '',
@@ -107,9 +108,11 @@ const title = computed(() =>
     ? props.record
       ? tr('Edit person')
       : tr('Add person')
-    : props.record
-      ? tr('Edit record')
-      : tr('Add organization knowledge'),
+    : comments && !props.record
+      ? tr('Add discussion')
+      : props.record
+        ? tr('Edit record')
+        : tr('Add organization knowledge'),
 );
 // ---- 组织架构图(6.4):上级只能是非后代、可见性与表单一致的人员 ----
 const invalidParents = computed(() =>
@@ -173,7 +176,17 @@ async function save() {
     const base = `/api/organizations/${props.organization.id}/tabs/${props.tab.id}/records`;
     await api(props.record ? `${base}/${props.record.id}` : base, {
       method: props.record ? 'PATCH' : 'POST',
-      body: { ...form, attachment },
+      body: {
+        ...form,
+        ...(comments
+          ? {
+              title: form.body.trim().split('\n')[0]!.slice(0, 160),
+              rawText: form.body,
+              reuseReference: false,
+            }
+          : {}),
+        attachment,
+      },
     });
     clearDraft();
     emit('saved');
@@ -214,8 +227,11 @@ async function save() {
           </button>
         </span>
       </div>
-      <label for="record-title">{{ chart ? tr('Role / job title') : tr('Title') }}</label>
+      <label v-if="!comments" for="record-title">
+        {{ chart ? tr('Role / job title') : tr('Title') }}
+      </label>
       <input
+        v-if="!comments"
         id="record-title"
         v-model="form.title"
         required
@@ -370,7 +386,7 @@ async function save() {
           />
         </label>
       </div>
-      <label for="record-body">{{ tr('Notes') }}</label>
+      <label for="record-body">{{ comments ? tr('Message') : tr('Notes') }}</label>
       <textarea
         id="record-body"
         v-model="form.body"
@@ -379,7 +395,7 @@ async function save() {
         maxlength="20000"
         :placeholder="tr('Record a fact, observation or follow-up…')"
       />
-      <div class="form-grid">
+      <div v-if="!comments" class="form-grid">
         <label>
           {{ tr('Scope') }}
           <input
@@ -399,7 +415,7 @@ async function save() {
           </select>
         </label>
       </div>
-      <fieldset class="form-section">
+      <fieldset v-if="!comments" class="form-section">
         <legend>{{ tr('Keep the original reference') }}</legend>
         <p class="hint">
           {{

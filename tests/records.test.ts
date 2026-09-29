@@ -224,13 +224,7 @@ test('records: states, revisions, references, visibility, history, profile', asy
       'module not configured for the tag',
     );
     assert.equal(
-      (
-        await post(
-          { ...base, body: 'x' },
-          'editor',
-          `/api/organizations/${org}/tabs/comments/records`,
-        )
-      ).statusCode,
+      (await post(base, 'editor', `/api/organizations/${org}/tabs/roadmap/records`)).statusCode,
       422,
       'module not moved to v2 yet',
     );

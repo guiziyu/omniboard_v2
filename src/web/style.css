@@ -1683,3 +1683,48 @@ details[open] > .movement-summary > svg:last-child {
     white-space: normal;
   }
 }
+
+/* ---- 讨论与联系人对话记录(frontend-spec 5.9) ---- */
+.discussion-compose {
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.discussion-compose label {
+  margin-top: 0;
+}
+.discussion-compose textarea {
+  margin: 6px 0;
+}
+.discussion-panel footer,
+.discussion-message header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.discussion-panel footer small {
+  color: var(--muted);
+  margin-right: auto;
+}
+.discussion-panel footer select {
+  width: auto;
+}
+.discussion-message {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.discussion-message small {
+  color: var(--muted);
+}
+.discussion-message .record-body {
+  max-width: 85ch;
+}
+.discussion-reply {
+  border-left: 2px solid var(--line);
+  margin: 12px 0 0 8px;
+  padding: 4px 0 4px 16px;
+}

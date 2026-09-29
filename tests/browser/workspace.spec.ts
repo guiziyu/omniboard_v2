@@ -171,7 +171,7 @@ test('workspace access pages', async ({ page }) => {
     await edit.getByRole('button', { name: 'Save record' }).click();
     await expect(edit).toBeHidden();
     await expect(row).toContainText('v2');
-    await row.getByRole('button', { name: 'History' }).click();
+    await row.getByRole('button', { name: 'History', exact: true }).click();
     const history = page.getByRole('dialog', { name: 'Record history' });
     await expect(history.locator('article')).toHaveCount(2);
     await page.keyboard.press('Escape');
@@ -304,6 +304,68 @@ test('workspace access pages', async ({ page }) => {
     await edit.getByRole('button', { name: 'Save record' }).click();
     await expect(edit).toBeHidden();
     await expect(movements).toContainText('Senior Trader');
+    await page.getByRole('button', { name: 'Back to organizations' }).click();
+  });
+
+  await test.step('discussion: draft, post, reply, edit, contact conversation history', async () => {
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Comments', exact: true }).click();
+    await expect(
+      page.getByText('No discussion yet. Start with a question or a short update.'),
+    ).toBeVisible();
+    const compose = page.getByLabel('Share an update or ask the team');
+    const post = page.getByRole('button', { name: 'Post update' });
+    await expect(post).toBeDisabled();
+    const message = 'Acme asked for a sandbox.\nNeeds a decision by Friday.';
+    await compose.fill(message);
+    // 草稿:离开 tab 再回来可以恢复(5.9)。
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('button', { name: 'Comments', exact: true }).click();
+    await page.getByRole('button', { name: 'Restore draft' }).click();
+    await expect(compose).toHaveValue(message);
+    await post.click();
+    await expect(compose).toHaveValue('');
+    const thread = page.locator('article.discussion-message');
+    await expect(thread).toContainText('Needs a decision by Friday.');
+
+    await thread.getByRole('button', { name: 'Reply' }).click();
+    await expect(page.getByText('Replying to Browser Owner')).toBeVisible();
+    await expect(compose).toBeFocused();
+    await compose.fill('Sandbox approved.');
+    await post.click();
+    await expect(thread.locator('.discussion-reply')).toContainText('Sandbox approved.');
+    await thread
+      .locator('.discussion-reply')
+      .getByRole('button', { name: 'Original reference' })
+      .click();
+    const drawer = page.getByRole('dialog', { name: 'Original reference' });
+    await expect(drawer.locator('pre')).toHaveText('Sandbox approved.');
+    await page.keyboard.press('Escape');
+
+    await thread.getByRole('button', { name: 'Edit', exact: true }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit record' });
+    await edit.getByLabel('Message').fill('Acme asked for a sandbox. Decision due Friday.');
+    await edit.getByRole('button', { name: 'Save record' }).click();
+    await expect(edit).toBeHidden();
+    await expect(thread.first()).toContainText('Decision due Friday.');
+
+    // 联系人对话记录:只列关联到这个联系人的讨论。
+    await page.getByRole('button', { name: 'Contacts', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Conversation history for Acme institutional desk' })
+      .click();
+    const history = page.getByRole('dialog', { name: 'Acme institutional desk' });
+    await expect(history.getByText('No conversations recorded yet.')).toBeVisible();
+    await history
+      .getByLabel('Record a conversation')
+      .fill('Called the desk; onboarding pack sent.');
+    await history.getByRole('button', { name: 'Post update' }).click();
+    await expect(history.locator('article.discussion-message')).toHaveCount(1);
+    await expect(history).toContainText('onboarding pack sent');
+    await page.keyboard.press('Escape');
+    await expect(history).toBeHidden();
+    await page.getByRole('button', { name: 'Comments', exact: true }).click();
+    await expect(page.locator('article.discussion-message')).toHaveCount(2);
     await page.getByRole('button', { name: 'Back to organizations' }).click();
   });
 
