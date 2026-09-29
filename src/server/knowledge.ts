@@ -5,6 +5,7 @@ import { problem, type User } from './auth';
 import { saveEvidence, type EvidenceStore } from './evidence';
 import { ensurePersonDossier } from './person-dossier';
 import { records } from './records';
+import { event } from './operation-log';
 import { conflictingClaimIds } from '../shared/claim-conflicts';
 import {
   dateIsCurrent,
@@ -93,24 +94,6 @@ export async function evidence(
     });
   if (record) return record.evidence_id;
   problem(422, 'Add the original information or select an existing source record.');
-}
-/** 活动历史(frontend-spec 8.4)。 */
-export async function event(
-  client: Client,
-  organizationId: string,
-  targetId: string,
-  kind: string,
-  title: string,
-  access: Access,
-  user: User,
-  payload: unknown,
-) {
-  await client.query(
-    `INSERT INTO omniboard.operation_events
-       (organization_id, target_id, kind, title, payload, visibility, author_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [organizationId, targetId, kind, title, payload, access, user.id],
-  );
 }
 /** 身份相关写入全部串行:合并链、重定向与记录归属的检查读到的都是提交后的状态。 */
 async function lockKnowledge(client: Client) {

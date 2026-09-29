@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// Overview(frontend-spec 4.7、4.9、4.10),从 v1 OrganizationOverview.vue 迁移。
-// 我方工作摘要(4.8)依赖任务与接入请求,随工作台(§10)一起迁移。
+// Overview(frontend-spec 4.7–4.10),从 v1 OrganizationOverview.vue 迁移。
 import { computed, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { api, atLeast, errorText, session } from '../api';
@@ -12,6 +11,7 @@ import { tabsFor } from '../../shared/registry';
 import type { Observation, Organization } from '../../shared/types';
 import Icon from './Icon.vue';
 import OrganizationMetrics from './OrganizationMetrics.vue';
+import OrganizationWorkSummary from './OrganizationWorkSummary.vue';
 const props = defineProps<{ organization: Organization }>();
 const emit = defineEmits<{ addNote: [] }>();
 const canEdit = computed(() => !!session.user && atLeast(session.user.role, 'editor'));
@@ -103,6 +103,7 @@ const volume = (point: Observation) => point.metrics.find((m) => m.key === 'volu
       </p>
     </section>
 
+    <OrganizationWorkSummary v-if="hasTab('onboarding')" :organization="organization" />
     <section id="metrics" class="overview-snapshot" :aria-label="tr('Key metrics')">
       <div class="section-heading">
         <h4>

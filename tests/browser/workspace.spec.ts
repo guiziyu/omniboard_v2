@@ -579,6 +579,75 @@ test('workspace access pages', async ({ page }) => {
     await nav.getByRole('link', { name: 'Organizations' }).click();
   });
 
+  await test.step('onboarding and connectors: request engineering help, progress, requests, board', async () => {
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Onboarding', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Next actions' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Show full plan/ })).toBeVisible();
+    const requests = page.locator('details.integration-plans');
+    await expect(requests).toContainText('0 requests');
+
+    // 接入记录选了「Request engineering help」→ 这一版生成请求(11.1)。
+    await page.getByRole('button', { name: 'Add record' }).click();
+    const editor = page.getByRole('dialog', { name: 'Add organization knowledge' });
+    await editor.getByLabel('Title').fill('Acme API test account');
+    await editor.getByLabel('Provider connection ID').fill('cex.acme');
+    await editor.getByLabel('Features to connect').fill('market, trading');
+    await editor.getByLabel('Product / environment scope').fill('Spot test account');
+    await editor.getByLabel('Provider account name or ID').fill('acme-test-01');
+    await editor.getByLabel('Request engineering help').selectOption('validate_readonly');
+    await editor.getByLabel('Business owner').fill('Casey Chief');
+    await editor.getByLabel('What is still needed?').fill('Awaiting API approval.');
+    await editor
+      .getByLabel('What has been checked, and what happens next?')
+      .fill('Desk confirmed a test account is possible.');
+    await editor.getByLabel('Notes').fill('Test account request.');
+    await editor.getByLabel('Original text').fill('Desk email: a test account can be issued.');
+    await editor.getByRole('button', { name: 'Save record' }).click();
+    await expect(editor).toBeHidden();
+
+    // 进度卡片:只有一张时默认展开,商务与技术两条轨道独立(10.9)。
+    const card = page.locator('details.onboarding-card');
+    await expect(card).toHaveAttribute('open', '');
+    await expect(card).toContainText('Account · acme-test-01');
+    await expect(card.getByRole('region', { name: 'Business access' })).toContainText(
+      'Access not confirmed',
+    );
+    await expect(card).toContainText(/\d+ checks before engineering can proceed/);
+    await requests.locator('summary').first().click();
+    await expect(requests).toContainText('1 request');
+    await expect(requests).toContainText('Queued for verification');
+    await expect(requests).toContainText('market.spot.trade.ws');
+    await expect(requests).toContainText('Awaiting resource: API account access · Casey Chief');
+
+    // Overview 的我方工作摘要(4.8)。
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    const summary = page.getByRole('region', { name: 'Team work summary' });
+    await expect(
+      summary.getByRole('heading', { name: 'Our work with Acme Exchange' }),
+    ).toBeVisible();
+    await expect(summary).toContainText('Access not confirmed');
+    await summary.getByRole('button', { name: 'Contacts, blockers & details' }).click();
+    await expect(summary).toContainText('Record owner · ');
+
+    // Connector 看板:venue → 叶子,后退回到 venue(11.6–11.8)。
+    await nav.getByRole('link', { name: 'Connectors' }).click();
+    await expect(page.getByRole('heading', { name: 'Connectors', level: 1 })).toBeVisible();
+    await page.getByRole('button', { name: 'acme', exact: true }).click();
+    await expect(page).toHaveURL(/venue=acme/);
+    await expect(page.getByRole('link', { name: 'Acme Exchange' })).toBeVisible();
+    await page.getByRole('button', { name: 'market.spot.trade.ws', exact: true }).click();
+    const leaf = page.getByRole('region', { name: 'market.spot.trade.ws' });
+    await expect(leaf).toContainText('Latest verification rows');
+    await expect(leaf.getByRole('cell', { name: 'passed', exact: true })).toBeVisible();
+    await page.goBack();
+    await expect(leaf).toBeHidden();
+    await page.getByRole('button', { name: '← All connectors' }).click();
+    await expect(page).toHaveURL(/\/connectors$/);
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

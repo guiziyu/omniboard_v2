@@ -50,6 +50,7 @@ import type { EvidenceStore } from './evidence';
 import { registerOrganizationRoutes } from './organization-routes';
 import { registerKnowledgeRoutes } from './knowledge-routes';
 import { registerWorkRoutes } from './work-routes';
+import { registerIntegrationRoutes } from './integration-routes';
 export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
@@ -380,6 +381,7 @@ export async function buildApp(options: AppOptions) {
   registerOrganizationRoutes(app, deps);
   registerKnowledgeRoutes(app, deps);
   registerWorkRoutes(app, deps);
+  registerIntegrationRoutes(app, deps);
 
   if (options.autoNotify !== false)
     app.addHook('onResponse', async (request) => {

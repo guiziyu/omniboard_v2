@@ -46,21 +46,71 @@ CREATE TABLE management.hft_group_limit (
   CONSTRAINT hft_group_limit_budget_chk CHECK (max_gross_exposure_usd > 0 AND max_gross_exposure_usd < 'Infinity'::double precision AND max_abs_net_exposure_usd > 0 AND max_abs_net_exposure_usd <= max_gross_exposure_usd)
 );
 
--- 视图形状(契约 §5);交接那一步再换成按底表计算的定义。
+-- 验证结果(契约 §5):底表按 quant 实体(live_test_run、live_test_case_result;catalog 快照只建视图用到的列),
+-- 三个视图的定义逐字取自 quant strategy/migration/sql/2026-09-20-verification-views-and-reader.sql。
+CREATE TABLE public.connector_catalog_snapshot (
+  venue_key text NOT NULL,
+  source_id text NOT NULL,
+  crate_path text,
+  build_revision text NOT NULL,
+  build_dirty boolean NOT NULL,
+  observed_at timestamptz NOT NULL,
+  factory_flags jsonb NOT NULL,
+  descriptor_json jsonb NOT NULL,
+  schema_version integer
+);
+CREATE TABLE verification.live_test_run (
+  run_id uuid PRIMARY KEY,
+  venue_key text NOT NULL,
+  source_id text NOT NULL,
+  crate_path text NOT NULL,
+  suite text NOT NULL,
+  environment text NOT NULL,
+  account_name text NOT NULL,
+  account_kind text NOT NULL,
+  server_id text NOT NULL,
+  build_revision text NOT NULL,
+  build_dirty boolean NOT NULL,
+  request_id uuid,
+  run_mode text NOT NULL,
+  started_at timestamptz NOT NULL,
+  finished_at timestamptz,
+  status text NOT NULL,
+  blockers jsonb NOT NULL DEFAULT '[]'::jsonb,
+  schema_version integer NOT NULL,
+  backfilled boolean NOT NULL DEFAULT false
+);
+CREATE TABLE verification.live_test_case_result (
+  run_id uuid NOT NULL REFERENCES verification.live_test_run (run_id),
+  feature_key text NOT NULL,
+  observed_at timestamptz NOT NULL,
+  status text NOT NULL,
+  skip_reason text,
+  error_text text,
+  evidence jsonb NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (run_id, feature_key)
+);
 CREATE VIEW verification.v_connector_declared_latest AS
-  SELECT NULL::text AS venue_key, NULL::text AS source_id, NULL::text AS crate_path, NULL::text AS build_revision,
-         NULL::boolean AS build_dirty, NULL::timestamptz AS observed_at, NULL::jsonb AS factory_flags,
-         NULL::jsonb AS declared_features, NULL::integer AS schema_version
-  WHERE false;
+  SELECT DISTINCT ON (s.venue_key)
+      s.venue_key, s.source_id, s.crate_path, s.build_revision, s.build_dirty, s.observed_at,
+      s.factory_flags, COALESCE(s.descriptor_json -> 'declared_features', '[]'::jsonb) AS declared_features,
+      s.schema_version
+  FROM public.connector_catalog_snapshot s
+  ORDER BY s.venue_key, s.observed_at DESC;
 CREATE VIEW verification.v_live_test_leaf_latest AS
-  SELECT NULL::text AS venue_key, NULL::text AS feature_key, NULL::text AS environment, NULL::text AS account_kind,
-         NULL::text AS status, NULL::text AS skip_reason, NULL::text AS error_text, NULL::timestamptz AS observed_at,
-         NULL::uuid AS run_id, NULL::text AS build_revision, NULL::boolean AS build_dirty, NULL::uuid AS request_id
-  WHERE false;
+  SELECT DISTINCT ON (r.venue_key, c.feature_key, r.environment, r.account_kind)
+      r.venue_key, c.feature_key, r.environment, r.account_kind, c.status, c.skip_reason, c.error_text,
+      c.observed_at, c.run_id, r.build_revision, r.build_dirty, r.request_id
+  FROM verification.live_test_case_result c
+  JOIN verification.live_test_run r ON r.run_id = c.run_id
+  ORDER BY r.venue_key, c.feature_key, r.environment, r.account_kind, c.observed_at DESC;
 CREATE VIEW verification.v_live_test_run_by_request AS
-  SELECT NULL::uuid AS request_id, NULL::uuid AS run_id, NULL::text AS venue_key, NULL::text AS suite,
-         NULL::text AS environment, NULL::text AS account_name, NULL::text AS account_kind, NULL::text AS build_revision,
-         NULL::boolean AS build_dirty, NULL::timestamptz AS started_at, NULL::timestamptz AS finished_at,
-         NULL::text AS status, NULL::jsonb AS blockers, NULL::integer AS passed_count, NULL::integer AS failed_count,
-         NULL::integer AS skipped_count
-  WHERE false;
+  SELECT r.request_id, r.run_id, r.venue_key, r.suite, r.environment, r.account_name, r.account_kind,
+      r.build_revision, r.build_dirty, r.started_at, r.finished_at, r.status, r.blockers,
+      COALESCE(SUM((c.status = 'passed')::int), 0)::bigint  AS passed_count,
+      COALESCE(SUM((c.status = 'failed')::int), 0)::bigint  AS failed_count,
+      COALESCE(SUM((c.status = 'skipped')::int), 0)::bigint AS skipped_count
+  FROM verification.live_test_run r
+  LEFT JOIN verification.live_test_case_result c ON c.run_id = r.run_id
+  WHERE r.request_id IS NOT NULL
+  GROUP BY r.run_id;

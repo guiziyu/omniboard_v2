@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireRole } from './access';
 import type { OrganizationDeps } from './organization-routes';
+import { staleDaysSetting, verificationAlerts } from './connector-requests';
+import { getOrganization } from './organizations';
 import {
   createTask,
   planInput,
@@ -23,9 +25,20 @@ export function registerWorkRoutes(app: FastifyInstance, deps: OrganizationDeps)
   const { pool, store } = deps;
   const today = () => new Date(deps.now()).toISOString().slice(0, 10);
 
-  app.get('/api/work', async (request) =>
-    workFeed(pool, request.user, feedQuery.parse(request.query).organizationId, today()),
-  );
+  app.get('/api/work', async (request) => {
+    const requested = feedQuery.parse(request.query).organizationId;
+    const orgId = requested ? (await getOrganization(pool, requested, request.user.role)).id : '';
+    const feed = await workFeed(pool, request.user, orgId, today());
+    // 接入请求失败与验证过期的告警(11.5):选了机构只看它,否则只看有任务的机构。
+    const read = {
+      admin: request.user.role === 'admin',
+      now: new Date(deps.now()).toISOString(),
+      staleDays: staleDaysSetting(),
+    };
+    const scoped = orgId ? [orgId] : [...new Set(feed.tasks.map((t) => t.organizationId))];
+    for (const scope of scoped) feed.alerts.push(...(await verificationAlerts(pool, scope, read)));
+    return feed;
+  });
   app.post('/api/organizations/:id/work/start', async (request, reply) => {
     requireRole(request, 'editor');
     const input = startInput.parse(request.body ?? {});

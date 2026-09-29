@@ -77,7 +77,7 @@ const handoffs: Record<string, StatusPresentation> = {
   // Derived request states (contract §2); the app never writes them.
   queued: {
     label: 'Queued for verification',
-    hint: 'The request is exported. No live-test run has been collected for it yet.',
+    hint: 'The request is saved for quant. No live-test run has been recorded for it yet.',
     icon: 'clock',
     tone: 'pending',
   },

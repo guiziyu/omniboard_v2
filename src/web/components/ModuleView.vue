@@ -17,6 +17,9 @@ import {
 } from '../../shared/record-summary';
 import { contactHref, knowledgeFields } from '../../shared/knowledge';
 import { pendingModules } from '../../shared/registry';
+import OnboardingProgress from './OnboardingProgress.vue';
+import IntegrationPlans from './IntegrationPlans.vue';
+import WorkBoard from './WorkBoard.vue';
 import { groupContacts } from '../../shared/contact-groups';
 import type { KnowledgeObject } from '../../shared/operations';
 import type { ModuleData, ModuleRecord, Organization, TabDefinition } from '../../shared/types';
@@ -265,6 +268,21 @@ const showList = computed(
         @refresh="emit('refresh')"
       />
       <KnowledgePanel v-if="tab.id === 'relationships'" :organization-id="organization.id" />
+      <template v-if="tab.id === 'onboarding'">
+        <OnboardingProgress
+          v-if="records.length"
+          :organization="organization"
+          :records="records"
+          @evidence="openEvidence"
+          @edit="edit"
+          @history="historyFor = $event"
+        />
+        <WorkBoard :organization-id="organization.id" embedded />
+        <IntegrationPlans
+          :organization-id="organization.id"
+          :revision-key="records.map((r) => r.id + ':' + r.revision).join(',')"
+        />
+      </template>
       <DiscussionPanel
         v-if="tab.kind === 'comments'"
         :organization="organization"
@@ -283,7 +301,7 @@ const showList = computed(
         v-if="
           data.status === 'empty' &&
           ['records', 'timeline'].includes(tab.kind) &&
-          tab.id !== 'relationships'
+          !['relationships', 'onboarding'].includes(tab.id)
         "
         class="empty"
       >

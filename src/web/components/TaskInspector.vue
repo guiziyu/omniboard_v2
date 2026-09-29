@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 任务详情面板(frontend-spec 10.4),从 v1 TaskInspector.vue 迁移。
-// 「Verification evidence from quant」与一键完成随接入请求(§11)一起迁移;
 // 「Open source information」在情报页(§8)移植前直接打开来源记录。
+// v2 直接读 quant 的 run(proposal §6),验证证据只在完成时存为任务证据,列表里不再有「Reference」。
 import { computed, nextTick, ref, watch } from 'vue';
 import { api, atLeast, errorText, session } from '../api';
 import { tr } from '../i18n';
@@ -16,6 +16,7 @@ import {
   type WorkTask,
 } from '../../shared/operations';
 import { taskImpact } from '../../shared/focus';
+import type { VerificationEvidence } from '../../shared/integration';
 import { taskText, taskReference, taskOwner } from '../task-text';
 import AppDialog from './AppDialog.vue';
 import Icon from './Icon.vue';
@@ -65,6 +66,40 @@ const nextTask = computed(
     )?.id,
 );
 const taskHistory = ref<TaskHistoryEvent[]>();
+// 本机构当前请求里已通过的 run(仅标准 validation 任务,10.4 第 11 项)。
+const verification = ref<VerificationEvidence[]>([]);
+async function loadVerification() {
+  const taskId = props.task.id;
+  verification.value = [];
+  if (props.task.templateKey !== 'validation' || isFinished(props.task.state)) return;
+  try {
+    const result = await api<{ attempts: VerificationEvidence[] }>(
+      `/api/work/tasks/${taskId}/verification`,
+    );
+    if (props.task.id === taskId) verification.value = result.attempts;
+  } catch {
+    // 读不到 run 时,手动完成的表单照常可用。
+  }
+}
+async function completeWithRun(runId: string) {
+  if (busy.value) return;
+  busy.value = true;
+  formError.value = '';
+  try {
+    const result = await api<TaskActionResult>(
+      `/api/work/tasks/${props.task.id}/verification-complete`,
+      { method: 'POST', body: { revision: props.task.revision, runId } },
+    );
+    await props.refresh();
+    actionResult.value = result;
+    actionFeedback.value = 'Task completed. Your result and evidence are saved.';
+    emit('changed', result);
+  } catch (e) {
+    formError.value = errorText(e);
+  } finally {
+    busy.value = false;
+  }
+}
 const scrollTop = () => body.value?.closest('.dialog')?.scrollTo({ top: 0 });
 watch(
   () => props.task.id,
@@ -87,6 +122,7 @@ watch(
         ? 'active'
         : 'progress';
     void nextTick(scrollTop);
+    void loadVerification();
   },
   { immediate: true },
 );
@@ -320,6 +356,27 @@ const actionLabels: Record<TaskState, string> = {
           {{ taskReference({ id: dep, title: '' }, tasks) }}
         </button>
       </div>
+      <section v-if="verification.length && editable" class="task-verification">
+        <h4>{{ tr('Verification evidence from quant') }}</h4>
+        <p v-for="attempt in verification" :key="attempt.runId">
+          {{ attempt.suite }} · {{ attempt.environment }} · {{ attempt.accountName }} ·
+          <code>{{ attempt.buildRevision.slice(0, 12) }}</code>
+          <span v-if="attempt.buildDirty"> ({{ tr('dirty') }})</span>
+          · {{ attempt.finishedAt ? dateTime(attempt.finishedAt) : '' }} ·
+          {{ tr('{0} passed, {1} skipped', [attempt.passedCount, attempt.skippedCount]) }}
+          <button
+            type="button"
+            class="link"
+            :disabled="busy || selected.blockers.length > 0"
+            @click="completeWithRun(attempt.runId)"
+          >
+            {{ tr('Complete with this run') }}
+          </button>
+        </p>
+        <p v-if="selected.blockers.length" class="hint">
+          {{ tr('Complete or waive the prerequisites first.') }}
+        </p>
+      </section>
       <div v-if="selected.outcome" class="outcome-box">
         <h3>{{ tr('Latest result / follow-up') }}</h3>
         <p class="preserve-lines">{{ selected.outcome }}</p>

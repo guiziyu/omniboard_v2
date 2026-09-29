@@ -174,15 +174,31 @@ CREATE TABLE omniboard.connector_request (
   action           text NOT NULL CHECK (action IN ('validate_readonly','prepare_config','propose_adapter_change')),
   declared_revision text,                      -- 创建时 venue 的声明 build_revision(spec 11.3 最后一行)
   request          jsonb NOT NULL,             -- 契约 §4 形状,创建后不改
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (record_id, record_revision)
+  reissue_of       uuid UNIQUE REFERENCES omniboard.connector_request(request_id),  -- 见下「重发」
+  created_at       timestamptz NOT NULL DEFAULT now()
 );
+-- 每个「记录 × 版本」一个首发请求;重发的快照不占这个位置。
+CREATE UNIQUE INDEX ON omniboard.connector_request(record_id, record_revision) WHERE reissue_of IS NULL;
 -- 不可变:触发器拒绝 UPDATE / DELETE。
 CREATE VIEW omniboard.v_connector_request AS
   SELECT request_id, created_at, request FROM omniboard.connector_request;
 ```
 
 - 请求状态、叶子状态、阻塞项都在读取时计算(spec 11.2–11.4),不存。
+- **重发**(补充,`007_connector_request.sql`):v1 在资源获批后原地改写同一 request_id 的 request.json(契约 §6
+  「重新导出被卡的请求」)。v2 的快照不可变,改为按新台账写一行新请求(新 request_id,`reissue_of` 指向旧请求),
+  旧快照原样保留;一个请求最多被重发一次。记录当前的请求 = 当前版本、且没有被重发取代的那一行。生成的
+  engineering 任务在描述里列出新的 request_id,quant 用新 id 跑。
+- 读 quant 的视图:`verification.v_*` 每次请求时直接查,不落本地副本;`build_dirty=true` 的结果不进派生状态。
+  v1 在投影时把通过的 run 存成证据并改写标准 validation 任务的下一步(spec 11.5 第 3 条);v2 没有投影这一步,
+  改为任务详情直接列出可用的 run,一键完成时 run 的 JSON 存为任务的证据。
+- 授权:`omniboard_app` 只有 `SELECT, INSERT`(触发器另外拒绝 UPDATE / DELETE);quant 经 `omniboard_read` 的
+  成员关系读 `v_connector_request`(db/owner/001_roles.sql)。
+- 导入 `/api/import/connector-requests`(导入窗口内、admin 令牌):`requestId`、`organizationId`、`recordId`、
+  `recordRevision`、`action`、`declaredRevision`、`request`(按契约 §4 校验,`request_id` 须一致)、`createdAt`。
+  导入的记录不自动生成请求(只有 v2 里保存的新版本才生成)。
+- 测试夹具 `tests/fixtures/quant-shapes.sql` 按契约 §5 建 `verification.live_test_run`、`live_test_case_result` 与
+  catalog 快照表,三个视图的定义逐字取自 quant 的迁移(`strategy/migration/sql/2026-09-20-verification-views-and-reader.sql`)。
 - `request.account.kind` 固定 `test`;`request.schema_version` = 1。
 - 视图授权给 quant 的 deliver skill 所用角色 `SELECT`(proposal §6)。
 

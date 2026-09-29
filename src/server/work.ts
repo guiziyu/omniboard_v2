@@ -4,12 +4,12 @@ import { id, tx } from './db';
 import { problem, type User } from './auth';
 import { saveEvidence, type EvidenceStore } from './evidence';
 import { getOrganization } from './organizations';
+import { event, lockWork } from './operation-log';
 import {
   checkAccess,
   checkReference,
   claimRows,
   dateInput,
-  event,
   evidence,
   getObject,
   identityIndex,
@@ -37,13 +37,6 @@ import { taskAttention } from '../shared/work-queue';
 
 type Db = Pool | Client;
 const admin = (user: User) => user.role === 'admin';
-
-/** 同一机构的任务写入串行:前置环检测、重开检查与模板幂等读到的都是已提交状态。 */
-async function lockWork(client: Client, organizationId: string) {
-  await client.query("SELECT pg_advisory_xact_lock(hashtextextended('work:' || $1, 0))", [
-    organizationId,
-  ]);
-}
 
 // ---- 读模型(v1 queries.ts taskRows) ----
 export async function taskRows(

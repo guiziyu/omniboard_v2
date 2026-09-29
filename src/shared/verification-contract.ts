@@ -1,14 +1,11 @@
-// 从 v1 src/shared/verification-contract.ts 迁移,内容保持一致。
+// 从 v1 src/shared/verification-contract.ts 迁移。
 import { z } from 'zod';
 /**
- * Mirror of quant `connector/docs/verification-contract.md`. The vocabulary line below is copied
- * byte for byte from contract §9; `tests/verification-contract.test.ts` pins its SHA-256 so that a
- * vocabulary change must land in both repositories in the same batch.
+ * quant `connector/docs/verification-contract.md` 的词表(§9,quant a146cd9b)。契约写明 v2 不钉词表的哈希,
+ * 按文本读 `verification.v_*`;这里只作为界面与请求校验用的副本,契约改词表时同步。
  */
 export const CONTRACT_VOCABULARY_JSON =
-  '{"contract_version":1,"faces":["market","wallet","wallet_action","trading","transfer","asset_network"],"transports":["ws","rest","sbe","fix"],"environments":["dev-us","dev-cred","colo-live"],"account_kinds":["test","production"],"case_status":["passed","failed","skipped"],"run_status":["passed","failed","aborted"],"leaf_status":["passed","failed","skipped","no_result","stale","awaiting_resource"],"request_status":["queued","running","passed","failed"],"constraint_kinds":["whitelist","rate_limit","protocol","endpoint","account_model","network_route","entitlement"],"resource_types":["api_credentials","whitelist","low_latency_stream","vip_tier","credit_line","colocation","market_data_rights","general_access"],"suites":["market-event","place-order","cancel-order","adjust-order","wallet-event","wallet-api","request-limit","common-error"],"stale_days":30}';
-export const CONTRACT_VOCABULARY_SHA256 =
-  '70a3542d9402ae01b5617d6aa466f54c9a9b78251e1f54c0c2c0f3606f7b73f1';
+  '{"contract_version":1,"faces":["market","wallet","wallet_action","trading","transfer","asset_network"],"transports":["ws","rest","sbe","fix"],"environments":["dev-us","dev-cred","colo-live"],"account_kinds":["test","production"],"case_status":["passed","failed","skipped"],"run_status":["passed","failed","aborted"],"leaf_status":["passed","failed","skipped","no_result","stale","awaiting_resource"],"request_status":["queued","running","passed","failed"],"constraint_kinds":["whitelist","rate_limit","protocol","endpoint","account_model","network_route","entitlement"],"resource_types":["api_credentials","whitelist","low_latency_stream","vip_tier","credit_line","colocation","market_data_rights","general_access"],"suites":["market-event","place-order","cancel-order","adjust-order","wallet-event","wallet-api","request-limit","common-error","asset-network"],"stale_days":30}';
 export interface ContractVocabulary {
   contract_version: number;
   faces: readonly string[];
@@ -82,6 +79,7 @@ export const suites = [
   'wallet-api',
   'request-limit',
   'common-error',
+  'asset-network',
 ] as const;
 export const STALE_DAYS_DEFAULT = contractVocabulary.stale_days;
 /** Capability codes used by Onboarding records, mapped to the face wildcard they request. */

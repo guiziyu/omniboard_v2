@@ -23,6 +23,7 @@ import { getOrganizationProfile } from './profiles';
 import { lockChart, saveRelationship, validateReportsTo } from './org-chart';
 import { validateDiscussionReferences } from './discussion';
 import { ensurePersonDossier } from './person-dossier';
+import { onRecordSaved } from './connector-requests';
 // 模块数据与记录(frontend-spec 4.3、5.1–5.6;data-model §3.3)。
 
 /** 各来源最近一次成功采集中该机构的观测;history=true 时取全部成功批次(最多 200 行)。 */
@@ -270,9 +271,10 @@ export async function saveRecord(
             attachment_evidence_id: string | null;
             reports_to: string;
             relationship_kind: 'confirmed' | 'unconfirmed' | null;
+            structured: Record<string, string>;
           }>(
             `SELECT r.id, r.revision, r.visibility, r.evidence_id, r.attachment_evidence_id,
-                    r.reports_to, c.kind AS relationship_kind
+                    r.reports_to, c.kind AS relationship_kind, r.structured
                FROM omniboard.module_records r
                LEFT JOIN omniboard.org_chart_relationships c ON c.record_id = r.id
               WHERE r.id = $1 AND r.organization_id = $2 AND r.tab_id = $3 FOR UPDATE OF r`,
@@ -443,6 +445,23 @@ export async function saveRecord(
       authorId,
       updatedAt,
     );
+    // 接入请求与由它产生的任务(frontend-spec 11.1、11.5);导入的记录不生成,v1 的请求另行导入。
+    if (!importing)
+      await onRecordSaved(
+        client,
+        user,
+        {
+          organizationId: org.id,
+          tabId,
+          recordId: id_,
+          revision,
+          visibility: input.visibility,
+          evidenceId,
+          structured,
+          previous: existing?.structured,
+        },
+        new Date().toISOString().slice(0, 10),
+      );
     return { id: id_, revision, created: !existing };
   });
 }
