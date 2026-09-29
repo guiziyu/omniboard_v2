@@ -73,7 +73,6 @@ test('editing a task source keeps the current reference, history and access cons
     await sql('SELECT evidence_id FROM omniboard.module_records WHERE id = $1', [b])
   ).rows[0].evidence_id;
   assert.equal(task.sourceRecordId, b);
-  assert.equal(task.sourceRecordTabId, 'comments');
   assert.equal(task.evidenceId, sourceEvidence);
   assert.notEqual(task.evidenceId, originalEvidence);
   const history = (await call('editor', 'GET', `/work/tasks/${taskId}/history`)).json().events;

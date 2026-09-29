@@ -117,6 +117,11 @@
 实现补充(路线图,frontend-spec 10.11、10.12):里程碑就是 `tab_id = 'roadmap'` 的 `module_records`,不新增表;
 执行任务以 `work_tasks.source_record_id` 关联,状态读取时取任务本身,里程碑不存进度,也不随任务完成而改变。
 
+实现补充(情报,`009_intelligence.sql`):`intelligence_reads` 按 成员 + 记录 存最后已读的 revision;
+`organization_follows` 按 成员 + 机构。两表经 `POST /api/import/intelligence-reads`(`{ownerId, recordId, revision,
+readAt}`)与 `POST /api/import/organization-follows`(`{ownerId, organizationId, createdAt}`)导入,规则同其他导入:
+同一对内容相同返回 200,已读 revision 或时间不同返回 409;关注别名机构时记到规范机构上。
+
 | v2 表 | 变化 | 迁移 |
 |---|---|---|
 | `module_records` | `structured_json` → `structured jsonb`;`event_date` 按业务日期约定 | ✓(保留 `revision`) |

@@ -999,6 +999,97 @@ test('workspace access pages', async ({ page }) => {
     await nav.getByRole('link', { name: 'Organizations' }).click();
   });
 
+  await test.step('intelligence and activity: source link, read state, queue, follow, history', async () => {
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    // 任务详情的「Open source information」打开情报详情;打开不等于已读(8.2)。
+    await nav.getByRole('link', { name: 'Work' }).click();
+    await page.getByRole('combobox', { name: 'Status' }).selectOption('');
+    await page
+      .locator('.task-queue-row')
+      .filter({ hasText: 'Follow up: Acme institutional desk' })
+      .click();
+    const task = page.getByRole('dialog', { name: 'Follow up: Acme institutional desk' });
+    await task.getByRole('link', { name: 'Open source information' }).click();
+    await expect(page).toHaveURL(/\/w\/internal\/intelligence\?organizationId=.*&record=/);
+    const detail = page.getByRole('dialog', { name: 'Acme Exchange' });
+    await expect(detail.getByRole('heading', { name: 'Acme institutional desk' })).toBeVisible();
+    await expect(detail.getByText('INTELLIGENCE')).toBeVisible();
+    await expect(detail.getByText('Read by you')).toBeHidden();
+    await expect(
+      detail.getByRole('button', { name: /Follow up: Acme institutional desk/ }),
+    ).toBeVisible();
+    await detail.getByRole('button', { name: 'Inspect evidence' }).click();
+    await expect(page.locator('.dialog.drawer')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.dialog.drawer')).toBeHidden();
+    await detail.getByRole('button', { name: 'Mark read', exact: true }).click();
+    await expect(detail.getByRole('status')).toHaveText(
+      'Marked read. Evidence status is unchanged.',
+    );
+    await expect(detail.getByText('Read by you')).toBeVisible();
+    await expect(detail.getByRole('button', { name: 'Mark unread' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(detail).toBeHidden();
+    await expect(page).not.toHaveURL(/record=/);
+
+    // 关注机构;浏览队列:「Mark read & next」到下一条,队尾「Mark read & finish」(8.2、8.3)。
+    await expect(page.getByRole('combobox', { name: /^Relevance/ })).toBeDisabled();
+    await page.getByRole('button', { name: 'Follow organization' }).click();
+    await expect(page.getByRole('button', { name: 'Following organization' })).toBeVisible();
+    const rows = page.locator('.intel-row');
+    await expect(rows.first()).toContainText('You follow this organization');
+    expect(await rows.count()).toBeGreaterThan(2);
+    await rows.first().click();
+    await expect(detail.getByText(/^1 of \d+$/)).toBeVisible();
+    await detail.getByRole('button', { name: 'Mark read & next' }).click();
+    await expect(detail.getByText(/^2 of \d+$/)).toBeVisible();
+    await detail.getByRole('button', { name: '← Previous' }).click();
+    await expect(detail.getByText('Read by you')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(detail).toBeHidden();
+    const left = await rows.count();
+    await rows.last().click();
+    await expect(detail.getByText(`${left} of ${left}`)).toBeVisible();
+    await detail.getByRole('button', { name: 'Mark read & finish' }).click();
+    await expect(detail).toBeHidden();
+    await expect(page.getByRole('status')).toHaveText(
+      'You reached the end of this batch. 1 records marked read.',
+    );
+    await page.getByRole('combobox', { name: /^Show/ }).selectOption('all');
+    await expect(rows.filter({ hasText: 'Acme institutional desk' }).first()).toBeVisible();
+    await page.getByRole('combobox', { name: /^Show/ }).selectOption('unread');
+    await page.getByRole('combobox', { name: /^Review queue/ }).selectOption('review');
+    await expect(page.getByRole('combobox', { name: /^Show/ })).toHaveValue('all');
+    await page.getByRole('button', { name: 'Following organization' }).click();
+    await expect(page.getByRole('button', { name: 'Follow organization' })).toBeVisible();
+
+    // 旧链接 /work?section=intelligence 转到情报页,其余查询保留(8.1)。
+    const organizationId = new URL(page.url()).searchParams.get('organizationId');
+    await page.goto(`/w/internal/work?section=intelligence&organizationId=${organizationId}`);
+    await expect(page).toHaveURL(
+      new RegExp(`/w/internal/intelligence\\?organizationId=${organizationId}$`),
+    );
+    await expect(page.getByRole('heading', { name: 'Intelligence inbox', level: 1 })).toBeVisible();
+
+    // 活动历史:顶栏时钟图标;task 事件回到工作台并打开任务(8.4)。
+    await page.getByRole('link', { name: 'Activity history' }).click();
+    await expect(page.getByRole('heading', { name: 'Activity history', level: 1 })).toBeVisible();
+    await expect(page.getByText('Shows the latest 100 changes you can access')).toBeVisible();
+    await page
+      .getByRole('combobox', { name: 'Organization' })
+      .selectOption({ label: 'Acme Exchange' });
+    await expect(page).toHaveURL(/activity\?organizationId=/);
+    await page
+      .getByRole('link', { name: /New information → Follow up: Acme institutional desk/ })
+      .click();
+    await expect(page).toHaveURL(/\/w\/internal\/work\?.*task=/);
+    await expect(
+      page.getByRole('dialog', { name: 'Follow up: Acme institutional desk' }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

@@ -57,12 +57,10 @@ export async function taskRows(
               t.description, t.next_step AS "nextStep", t.completion_criteria AS "completionCriteria",
               COALESCE(t.follow_up_on, '') AS "followUpOn", t.outcome, COALESCE(t.due_on, '') AS "dueOn",
               t.visibility, t.revision, t.updated_at AS "updatedAt", t.evidence_id AS "evidenceId",
-              COALESCE(t.source_record_id, '') AS "sourceRecordId",
-              COALESCE(r.tab_id, '') AS "sourceRecordTabId"
+              COALESCE(t.source_record_id, '') AS "sourceRecordId"
          FROM omniboard.work_tasks t
          JOIN omniboard.organizations o ON o.id = t.organization_id
          LEFT JOIN omniboard.member m ON m.id = t.owner_id
-         LEFT JOIN omniboard.module_records r ON r.id = t.source_record_id
         WHERE ($1 = '' OR t.organization_id = $1) AND (t.visibility = 'team' OR $2)
         ORDER BY t.updated_at DESC, t.id COLLATE "C"`,
       [orgId, admin(user)],
@@ -227,7 +225,14 @@ export async function workFeed(
         ORDER BY o.name COLLATE "C", o.id COLLATE "C"`,
     )
   ).rows;
-  return { tasks, events, alerts, members, organizations };
+  const followed = (
+    await pool.query<{ id: string }>(
+      `SELECT organization_id AS id FROM omniboard.organization_follows
+        WHERE owner_id = $1 ORDER BY organization_id COLLATE "C"`,
+      [user.id],
+    )
+  ).rows.map((f) => f.id);
+  return { tasks, followedOrganizationIds: followed, events, alerts, members, organizations };
 }
 export async function taskHistory(
   pool: Pool,

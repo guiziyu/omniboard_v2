@@ -35,7 +35,6 @@ const task = (id: string, changes: Partial<WorkTask> = {}): WorkTask => ({
   updatedAt: '',
   evidenceId: '',
   sourceRecordId: '',
-  sourceRecordTabId: '',
   objectIds: [],
   dependencies: [],
   blockers: [],

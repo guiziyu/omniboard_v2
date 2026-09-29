@@ -31,6 +31,16 @@ const router = createRouter({
         return { path: '/w/internal/intelligence', query, replace: true };
       },
     },
+    {
+      path: '/w/internal/intelligence',
+      component: () => import('./views/IntelligenceView.vue'),
+      meta: { title: 'Intelligence inbox' },
+    },
+    {
+      path: '/w/internal/activity',
+      component: () => import('./views/ActivityView.vue'),
+      meta: { title: 'Activity history' },
+    },
     { path: '/activate', component: () => import('./ActivateView.vue') },
     {
       path: '/w/internal/organizations',

@@ -6,6 +6,7 @@ import { RouterLink, RouterView, useRoute } from 'vue-router';
 import { api, errorText, refreshSummary, session, summary, type User } from './api';
 import LoginView from './LoginView.vue';
 import EvidenceDrawer from './components/EvidenceDrawer.vue';
+import Icon from './components/Icon.vue';
 import { evidenceId } from './evidence';
 import './i18n'; // 同步 <html lang>(frontend-spec 2.10)
 const route = useRoute();
@@ -70,6 +71,7 @@ async function logout() {
       <RouterLink to="/w/internal/organizations" class="brand">Omniboard</RouterLink>
       <nav aria-label="Main">
         <RouterLink to="/w/internal/work">Work</RouterLink>
+        <RouterLink to="/w/internal/intelligence">Intelligence inbox</RouterLink>
         <RouterLink
           to="/w/internal/organizations"
           :class="{ 'router-link-active': inOrganizations }"
@@ -106,6 +108,14 @@ async function logout() {
           ☰
         </button>
         <span>Omniboard / {{ route.meta.title ?? 'Organizations' }}</span>
+        <RouterLink
+          to="/w/internal/activity"
+          class="topbar-activity"
+          aria-label="Activity history"
+          title="Activity history"
+        >
+          <Icon name="clock" :size="18" />
+        </RouterLink>
       </header>
       <p v-if="recoveryLeft !== null" class="notice" role="status">
         <span>

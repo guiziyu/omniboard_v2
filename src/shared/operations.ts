@@ -1,5 +1,5 @@
 // 共享对象、结论、关系与任务的类型(data-model §3.4),从 v1 src/shared/operations.ts 与
-// src/modules/operations.ts 迁移;v1 的 rawId 改名 evidenceId。情报的类型随情报(§8)一起迁移。
+// src/modules/operations.ts 迁移;v1 的 rawId 改名 evidenceId。
 export type Access = 'team' | 'admin';
 export type ObjectKind = 'person' | 'account' | 'capability' | 'resource';
 export type TaskState = 'planned' | 'active' | 'waiting' | 'done' | 'skipped';
@@ -27,14 +27,14 @@ export interface WorkTask {
   updatedAt: string;
   evidenceId: string;
   sourceRecordId: string;
-  /** 来源记录所在的 tab,用于「Open source information」(情报页移植前直接打开记录)。 */
-  sourceRecordTabId: string;
   objectIds: string[];
   dependencies: string[];
   blockers: { id: string; title: string }[];
 }
 export interface WorkFeed {
   tasks: WorkTask[];
+  /** 当前成员关注的机构(8.3),个人状态。 */
+  followedOrganizationIds: string[];
   members: { id: string; name: string }[];
   organizations: { id: string; name: string; tags: string[] }[];
   events: {
@@ -54,6 +54,45 @@ export interface WorkFeed {
     targetId: string;
     kind: string;
   }[];
+}
+/** 情报收件箱的条目(frontend-spec 8.1):每条记录的最新版本。 */
+export interface IntelligenceItem {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  tabId: string;
+  title: string;
+  summary: string;
+  scope: string;
+  status: string;
+  /** structured.evidenceLevel,没有时为 ''。 */
+  verification: string;
+  revision: number;
+  updatedAt: string;
+  evidenceId: string;
+  read: boolean;
+  reasons: string[];
+}
+export interface IntelligenceFeed {
+  items: IntelligenceItem[];
+  total: number;
+  hasMore: boolean;
+}
+export interface IntelligenceDetail {
+  item: IntelligenceItem;
+  body: string;
+  structured: Record<string, string>;
+  source: { source: string; url: string; capturedAt: string };
+  changes: { field: string; before: string; after: string }[];
+  hasPrevious: boolean;
+  tasks: {
+    id: string;
+    title: string;
+    state: WorkTask['displayState'];
+    link: 'direct' | 'organization';
+  }[];
+  objects: { id: string; name: string; kind: ObjectKind }[];
+  contacts: { id: string; title: string; name: string }[];
 }
 export interface TaskActionResult {
   taskId: string;

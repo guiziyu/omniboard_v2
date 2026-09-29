@@ -3297,3 +3297,193 @@ td.conn-cell {
     display: none;
   }
 }
+/* 情报收件箱与活动历史(frontend-spec 8)。 */
+.topbar-activity {
+  margin-left: auto;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.topbar-activity:hover,
+.topbar-activity.router-link-active {
+  color: var(--accent);
+}
+.evidence-review-queue {
+  margin: 14px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.evidence-review-queue summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+button.attention-row,
+a.attention-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+.attention-row span {
+  color: var(--muted);
+}
+.intel-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 16px;
+  margin: 12px 0;
+}
+.intel-controls button.link {
+  margin: 0 0 8px;
+}
+.intel-list,
+.activity-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+button.intel-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: inherit;
+  text-align: left;
+}
+button.intel-row.unread {
+  border-left: 3px solid var(--accent);
+}
+.intel-row-meta,
+.intel-row-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.intel-unread {
+  color: var(--accent);
+  font-weight: 600;
+}
+.intel-row-summary {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.intel-reason {
+  font-size: 12px;
+  color: var(--accent);
+  margin: 0;
+}
+.status-badge {
+  display: inline-block;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.notice-inline {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--changed);
+}
+.intel-empty {
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+.intel-footnote {
+  margin-top: 16px;
+  font-size: 12px;
+}
+.intel-inspector {
+  display: grid;
+  gap: 10px;
+}
+.intel-inspector h3,
+.intel-inspector h4,
+.intel-inspector p {
+  margin: 0;
+}
+.intel-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.intel-navigation button.link {
+  margin: 0;
+}
+.intel-changes dl,
+.intel-grid {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 0;
+}
+.intel-changes dt,
+.intel-grid dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.intel-changes dd,
+.intel-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.intel-changes del {
+  color: var(--danger);
+  margin-right: 8px;
+}
+.intel-source {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel);
+}
+.intel-source button.link {
+  margin: 0;
+}
+.intel-fields summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+button.context-link,
+a.context-link {
+  display: grid;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+.intel-inspector .actions {
+  position: sticky;
+  bottom: -18px;
+  margin: 0 -20px -18px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}

@@ -52,6 +52,7 @@ import { registerKnowledgeRoutes } from './knowledge-routes';
 import { registerWorkRoutes } from './work-routes';
 import { registerTalentRoutes } from './talent-routes';
 import { registerIntegrationRoutes } from './integration-routes';
+import { registerIntelligenceRoutes } from './intelligence';
 export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
@@ -79,6 +80,9 @@ const readerWrites = new Set([
   '/api/tokens/:tokenId',
   '/api/security/password',
   '/api/security/recovery-codes',
+  // 情报已读与关注机构是个人状态(frontend-spec 8.2、8.3)。
+  '/api/intelligence/:id/read',
+  '/api/organizations/:id/follow',
 ]);
 const writeMethods = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 const bearerOf = (request: FastifyRequest) =>
@@ -384,6 +388,7 @@ export async function buildApp(options: AppOptions) {
   registerWorkRoutes(app, deps);
   registerTalentRoutes(app, deps);
   registerIntegrationRoutes(app, deps);
+  registerIntelligenceRoutes(app, deps);
 
   if (options.autoNotify !== false)
     app.addHook('onResponse', async (request) => {

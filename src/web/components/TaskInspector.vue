@@ -1,6 +1,5 @@
 <script setup lang="ts">
 // 任务详情面板(frontend-spec 10.4),从 v1 TaskInspector.vue 迁移。
-// 「Open source information」在情报页(§8)移植前直接打开来源记录。
 // v2 直接读 quant 的 run(proposal §6),验证证据只在完成时存为任务证据,列表里不再有「Reference」。
 import { computed, nextTick, ref, watch } from 'vue';
 import { api, atLeast, errorText, session } from '../api';
@@ -385,8 +384,8 @@ const actionLabels: Record<TaskState, string> = {
         <RouterLink
           v-if="selected.sourceRecordId"
           :to="{
-            path: `/w/internal/organizations/${selected.organizationId}/${selected.sourceRecordTabId}`,
-            query: { record: selected.sourceRecordId },
+            path: '/w/internal/intelligence',
+            query: { organizationId: selected.organizationId, record: selected.sourceRecordId },
           }"
         >
           {{ tr('Open source information') }}
