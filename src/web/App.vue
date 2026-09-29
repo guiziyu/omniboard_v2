@@ -1,87 +1,103 @@
 <script setup lang="ts">
-// 骨架外壳:启动检查会话 → 激活页 / 登录页 / 工作区占位。路由与页面在后续步骤按 frontend-spec 补齐。
-import { onMounted, ref } from 'vue';
-import { api, ApiError, type User } from './api';
+// 外壳(frontend-spec 2.1、2.3、2.4):启动检查会话;未登录时在当前 URL 上显示登录页;
+// 登录后是侧栏 + 顶栏 + 页面。激活页不需要登录。
+import { computed, onMounted, ref, watch } from 'vue';
+import { RouterLink, RouterView, useRoute } from 'vue-router';
+import { api, errorText, session, type User } from './api';
 import LoginView from './LoginView.vue';
-import ActivateView from './ActivateView.vue';
-const user = ref<User | null>(null);
+const route = useRoute();
 const loading = ref(true);
-const error = ref('');
-const activateToken = new URLSearchParams(location.search).get('token');
-const activating = ref(location.pathname === '/activate' && !!activateToken);
+const bootError = ref('');
+const menuOpen = ref(false);
+// 用恢复码登录后提示剩余数量(frontend-spec 12.3)。
+const recoveryLeft = ref<string | null>(null);
+function readRecoveryNotice() {
+  try {
+    recoveryLeft.value = sessionStorage.getItem('omniboard.recoveryNotice');
+    sessionStorage.removeItem('omniboard.recoveryNotice');
+  } catch {
+    recoveryLeft.value = null;
+  }
+}
+const isAdmin = computed(() => session.user?.role === 'admin');
+const initials = computed(() =>
+  (session.user?.name ?? '')
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase(),
+);
 onMounted(async () => {
   try {
-    user.value = (await api<{ user: User | null }>('/api/session')).user;
+    session.user = (await api<{ user: User | null }>('/api/session')).user;
   } catch (e) {
-    error.value = (e as ApiError).message;
+    bootError.value = errorText(e);
   } finally {
     loading.value = false;
   }
 });
-function signedIn(next: User) {
-  user.value = next;
-  if (activating.value) {
-    activating.value = false;
-    history.replaceState(null, '', '/w/internal/organizations');
-  }
-}
+watch(
+  () => session.user?.id,
+  (id) => id && readRecoveryNotice(),
+);
+watch(
+  () => session.user?.locale,
+  (locale) => (document.documentElement.lang = locale ?? 'en'),
+);
+watch(
+  () => route.path,
+  () => (menuOpen.value = false),
+);
 async function logout() {
-  await api('/api/logout', { method: 'POST' });
-  user.value = null;
+  await api('/api/logout', { method: 'POST' }).catch(() => undefined);
+  session.user = null;
 }
 </script>
 <template>
   <main v-if="loading" class="boot">Opening your workspace…</main>
-  <ActivateView v-else-if="activating && activateToken" :token="activateToken" @done="signedIn" />
-  <LoginView v-else-if="!user" :error="error" @done="signedIn" />
-  <main v-else class="shell">
-    <header>
-      <strong>Omniboard</strong>
-      <span>{{ user.name }} · {{ user.role }}</span>
-      <button type="button" @click="logout">Sign out</button>
-    </header>
-    <p>Workspace pages are not built yet.</p>
-  </main>
+  <RouterView v-else-if="route.path === '/activate'" />
+  <LoginView v-else-if="!session.user" :error="bootError" />
+  <div v-else class="layout" :class="{ open: menuOpen }">
+    <aside class="sidebar">
+      <RouterLink to="/w/internal/organizations" class="brand">Omniboard</RouterLink>
+      <nav aria-label="Main">
+        <RouterLink to="/w/internal/organizations">Organizations</RouterLink>
+        <template v-if="isAdmin">
+          <p class="group">Administration</p>
+          <RouterLink to="/w/internal/members">Team members</RouterLink>
+          <RouterLink to="/w/internal/audit">Audit log</RouterLink>
+        </template>
+      </nav>
+      <div class="bottom">
+        <RouterLink to="/w/internal/settings">Settings</RouterLink>
+        <div class="me">
+          <span class="avatar" aria-hidden="true">{{ initials }}</span>
+          <span>
+            <strong>{{ session.user.name }}</strong>
+            <small>{{ session.user.role }}</small>
+          </span>
+          <button type="button" class="ghost" @click="logout">Sign out</button>
+        </div>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <button type="button" class="ghost menu" aria-label="Menu" @click="menuOpen = !menuOpen">
+          ☰
+        </button>
+        <span>Omniboard / {{ route.meta.title ?? 'Organizations' }}</span>
+      </header>
+      <p v-if="recoveryLeft !== null" class="notice" role="status">
+        <span>
+          You used a recovery code. {{ recoveryLeft }} codes left.
+          <RouterLink v-if="Number(recoveryLeft) < 3" to="/w/internal/settings"
+            >Generate new codes</RouterLink
+          >
+        </span>
+        <button type="button" class="ghost" @click="recoveryLeft = null">Dismiss</button>
+      </p>
+      <RouterView />
+    </div>
+  </div>
 </template>
-<style>
-body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
-  background: #fff;
-  color: #111;
-}
-.boot,
-.shell,
-.card {
-  max-width: 420px;
-  margin: 10vh auto;
-  padding: 0 16px;
-}
-.shell {
-  max-width: 960px;
-}
-.shell header {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-}
-label {
-  display: block;
-  margin: 12px 0 4px;
-}
-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px;
-}
-button {
-  margin-top: 16px;
-  padding: 8px 16px;
-}
-.error {
-  color: #b00020;
-}
-code {
-  word-break: break-all;
-}
-</style>

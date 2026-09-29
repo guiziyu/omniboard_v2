@@ -1,0 +1,368 @@
+/* 骨架样式:只保证可用与可读;视觉按 v1 设计在页面移植时替换。 */
+:root {
+  --bg: #fff;
+  --fg: #16151a;
+  --muted: #6b6878;
+  --line: #e4e2ea;
+  --panel: #f7f6fa;
+  --accent: #4b2fd6;
+  --danger: #b3261e;
+  --changed: #fff4d6;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121117;
+    --fg: #ecebf2;
+    --muted: #9c98ab;
+    --line: #2c2a36;
+    --panel: #1b1a22;
+    --accent: #8f7cff;
+    --danger: #ff8a80;
+    --changed: #3a3120;
+    color-scheme: dark;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+a {
+  color: var(--accent);
+}
+h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+h3 {
+  font-size: 15px;
+  margin: 16px 0 6px;
+}
+label {
+  display: block;
+  margin: 10px 0 4px;
+}
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 7px 8px;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+button {
+  padding: 7px 14px;
+  font: inherit;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.ghost {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--line);
+}
+button.danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+button.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  margin-top: 6px;
+}
+.error {
+  color: var(--danger);
+}
+.hint,
+small {
+  color: var(--muted);
+}
+small {
+  display: block;
+}
+code,
+pre.secret {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+pre.secret {
+  white-space: pre-wrap;
+  background: var(--panel);
+  padding: 12px;
+  border-radius: 6px;
+}
+.boot,
+.card {
+  max-width: 400px;
+  margin: 10vh auto;
+  padding: 0 16px;
+}
+.card button[type='submit'] {
+  margin-top: 16px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+.sidebar {
+  border-right: 1px solid var(--line);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--panel);
+}
+.sidebar nav,
+.sidebar .bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sidebar .bottom {
+  margin-top: auto;
+}
+.sidebar a {
+  text-decoration: none;
+  color: var(--fg);
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+.sidebar a.router-link-active {
+  background: var(--bg);
+  font-weight: 600;
+}
+.sidebar .brand {
+  font-weight: 700;
+  font-size: 16px;
+}
+.sidebar .group {
+  margin: 12px 8px 2px;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.me {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+}
+.me small {
+  display: block;
+}
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  flex: none;
+}
+.me button {
+  margin-left: auto;
+  padding: 4px 8px;
+}
+.main {
+  min-width: 0;
+}
+.topbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.topbar .menu {
+  display: none;
+}
+.notice {
+  margin: 12px 24px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--changed);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.page {
+  padding: 20px 24px 48px;
+  max-width: 1100px;
+}
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0;
+}
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+  max-width: 640px;
+}
+.panel > button,
+.panel form > button {
+  margin-top: 12px;
+}
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th,
+td {
+  text-align: left;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 13px;
+}
+tr.clickable {
+  cursor: pointer;
+}
+tr.detail > td {
+  background: var(--panel);
+}
+tr.changed td {
+  background: var(--changed);
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 16px;
+}
+.filters label {
+  margin: 0;
+  min-width: 150px;
+  flex: 1;
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.45);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 10;
+}
+.dialog {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 18px 20px;
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+}
+.dialog > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.dialog > header button {
+  padding: 2px 8px;
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.actions.wrap {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 12px 0 0;
+}
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.choice input {
+  width: auto;
+  margin-top: 4px;
+}
+form.inline {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+form.inline label {
+  margin: 0;
+}
+form.inline select {
+  width: auto;
+}
+@media (max-width: 760px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    display: none;
+  }
+  .layout.open .sidebar {
+    display: flex;
+    position: fixed;
+    inset: 0 30% 0 0;
+    z-index: 5;
+  }
+  .topbar {
+    padding: 10px 16px;
+  }
+  .topbar .menu {
+    display: inline-block;
+  }
+  .page {
+    padding: 16px 16px 40px;
+  }
+}

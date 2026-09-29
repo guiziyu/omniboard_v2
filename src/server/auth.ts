@@ -111,6 +111,7 @@ async function recordFailure(
     targetKey: member.id,
     after: { lockedUntil: until.toISOString() },
     stepUp: false,
+    notify: true,
   });
   return until;
 }
@@ -358,4 +359,39 @@ export async function bootstrapAdmin(ctx: AuthContext, input: { name: string; em
       problem(409, 'An administrator already exists. Use the Team members page.');
     return inviteMember(client, ctx, { id: '', via: 'cli' }, { ...input, role: 'admin' });
   });
+}
+
+// ---- 本人的安全设置(frontend-spec 12.6 Security) ----
+export async function recoveryCodesLeft(pool: Pool, memberId: string): Promise<number> {
+  const result = await pool.query<{ n: number }>(
+    'SELECT count(*)::int AS n FROM omniboard.member_recovery_code WHERE member_id = $1 AND used_at IS NULL',
+    [memberId],
+  );
+  return result.rows[0]!.n;
+}
+export async function changePassword(
+  ctx: AuthContext,
+  memberId: string,
+  input: { current: string; next: string },
+): Promise<void> {
+  // 每人只有一个会话,所以「结束其他会话」天然成立;当前会话保留。
+  const row = await ctx.pool.query<{ password_hash: string | null }>(
+    'SELECT password_hash FROM omniboard.member WHERE id = $1',
+    [memberId],
+  );
+  if (!verifyPassword(input.current, row.rows[0]?.password_hash ?? null))
+    problem(403, 'The current password is incorrect.');
+  await ctx.pool.query('UPDATE omniboard.member SET password_hash = $2 WHERE id = $1', [
+    memberId,
+    hashPassword(input.next),
+  ]);
+}
+/** 需要当场输入验证码;旧恢复码全部作废。 */
+export async function regenerateRecoveryCodes(
+  ctx: AuthContext,
+  memberId: string,
+  code: string,
+): Promise<string[]> {
+  await stepUp(ctx, memberId, code);
+  return tx(ctx.pool, (client) => replaceRecoveryCodes(client, memberId));
 }

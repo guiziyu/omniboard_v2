@@ -12,13 +12,15 @@
     "build": "npm run check && vite build",
     "check": "vue-tsc --noEmit",
     "start": "tsx src/server/index.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "migrate": "tsx src/server/cli.ts migrate",
     "selfcheck": "tsx src/server/cli.ts selfcheck",
     "cli": "tsx src/server/cli.ts",
     "format": "prettier --write src tests scripts package.json tsconfig.json vite.config.ts",
     "format:check": "prettier --check src tests scripts package.json tsconfig.json vite.config.ts",
-    "verify": "npm run format:check && npm test && npm run build"
+    "verify": "npm run format:check && npm test && npm run build",
+    "test:browser": "npm run build && nice -n 19 playwright test -c tests/browser/playwright.config.ts",
+    "verify:push": "npm run verify && npm run test:browser"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
@@ -32,6 +34,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
     "@vitejs/plugin-vue": "^6.0.9",

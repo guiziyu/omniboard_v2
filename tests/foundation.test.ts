@@ -40,6 +40,7 @@ test('migrations, activation, TOTP login, sessions, lockout, step-up and audit',
     origin,
     now: () => clock,
     serveStatic: false,
+    autoNotify: false,
   });
   t.after(async () => {
     await app.close();

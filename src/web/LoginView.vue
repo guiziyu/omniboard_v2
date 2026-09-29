@@ -1,9 +1,8 @@
 <script setup lang="ts">
-// frontend-spec 12.3
+// frontend-spec 12.3:登录后停在原深链页面。
 import { ref } from 'vue';
-import { api, ApiError, type User } from './api';
+import { api, errorText, session, type User } from './api';
 const props = defineProps<{ error?: string }>();
-const emit = defineEmits<{ done: [user: User] }>();
 const email = ref('');
 const password = ref('');
 const code = ref('');
@@ -23,10 +22,10 @@ async function submit() {
       },
     });
     if (result.recoveryCodesLeft !== null)
-      alert(`You used a recovery code. ${result.recoveryCodesLeft} codes left.`);
-    emit('done', result.user);
+      sessionStorage.setItem('omniboard.recoveryNotice', String(result.recoveryCodesLeft));
+    session.user = result.user;
   } catch (e) {
-    message.value = (e as ApiError).message;
+    message.value = errorText(e);
   } finally {
     busy.value = false;
     code.value = '';
@@ -54,9 +53,9 @@ async function submit() {
       :autocomplete="useRecovery ? 'off' : 'one-time-code'"
       required
     />
-    <a href="#" @click.prevent="useRecovery = !useRecovery">
+    <button type="button" class="link" @click="useRecovery = !useRecovery">
       {{ useRecovery ? 'Use an authenticator code' : 'Use a recovery code' }}
-    </a>
+    </button>
     <p v-if="message" class="error" role="alert">{{ message }}</p>
     <button type="submit" :disabled="busy">Sign in</button>
   </form>

@@ -71,7 +71,7 @@ CREATE TABLE omniboard.audit_event (
   id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   at             timestamptz NOT NULL DEFAULT now(),
   actor_id       text NOT NULL REFERENCES omniboard.member(id),
-  via            text NOT NULL CHECK (via IN ('session','agent_token','cli')),
+  via            text NOT NULL CHECK (via IN ('session','agent_token','cli','system')),
   agent_token_id text REFERENCES omniboard.agent_token(id),
   action         text NOT NULL,
   target_table   text NOT NULL,
@@ -79,11 +79,14 @@ CREATE TABLE omniboard.audit_event (
   before         jsonb,
   after          jsonb,
   step_up        boolean NOT NULL,
-  notify         text NOT NULL CHECK (notify IN ('none','sent','failed')),
+  -- 需要通知 owner(frontend-spec 12.11);发送结果另写 action='notify_result' 的事件(outbox)。
+  notify_required boolean NOT NULL,
   CHECK ((via = 'agent_token') = (agent_token_id IS NOT NULL))
 );
 CREATE INDEX audit_event_at ON omniboard.audit_event(at DESC);
 CREATE INDEX audit_event_target ON omniboard.audit_event(target_table, target_key, at DESC);
+CREATE INDEX audit_event_notify_result ON omniboard.audit_event(((after->>'eventId')::bigint))
+  WHERE action = 'notify_result';
 CREATE TRIGGER audit_event_append_only BEFORE UPDATE OR DELETE ON omniboard.audit_event
   FOR EACH ROW EXECUTE FUNCTION omniboard.reject_mutation();
 CREATE TRIGGER audit_event_no_truncate BEFORE TRUNCATE ON omniboard.audit_event

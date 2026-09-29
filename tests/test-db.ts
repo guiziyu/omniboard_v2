@@ -24,11 +24,15 @@ export async function createTestDb(): Promise<TestDb> {
   await admin.query(`CREATE DATABASE ${name}`);
   await admin.end();
   const adminUrl = withDatabase(server, name);
+  // 角色是整个实例共享的;测试文件串行执行(package.json --test-concurrency=1),避免并发改角色。
   const setup = new pg.Client({ connectionString: adminUrl });
   await setup.connect();
-  await setup.query(readFileSync('tests/fixtures/quant-shapes.sql', 'utf8'));
-  await setup.query(readFileSync('db/owner/001_roles.sql', 'utf8'));
-  await setup.end();
+  try {
+    await setup.query(readFileSync('tests/fixtures/quant-shapes.sql', 'utf8'));
+    await setup.query(readFileSync('db/owner/001_roles.sql', 'utf8'));
+  } finally {
+    await setup.end();
+  }
   await migrate(adminUrl);
   const pool = openPool(withDatabase(server, name, 'omniboard_app'), 4);
   return {

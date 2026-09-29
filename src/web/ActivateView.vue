@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // frontend-spec 12.2。二维码在界面那一步补;先显示可复制的密钥与 otpauth 链接。
 import { onMounted, ref } from 'vue';
-import { api, ApiError, type User } from './api';
-const props = defineProps<{ token: string }>();
-const emit = defineEmits<{ done: [user: User] }>();
-const base = `/api/activate/${encodeURIComponent(props.token)}`;
+import { useRoute, useRouter } from 'vue-router';
+import { api, errorText, session, type User } from './api';
+const route = useRoute();
+const router = useRouter();
+const base = `/api/activate/${encodeURIComponent(String(route.query.token ?? ''))}`;
 const info = ref<{ name: string; email: string; purpose: 'activate' | 'reset' } | null>(null);
 const setup = ref<{ secret: string; uri: string } | null>(null);
 const password = ref('');
@@ -20,9 +21,13 @@ onMounted(async () => {
     info.value = await api(base);
     setup.value = await api(`${base}/authenticator`, { method: 'POST' });
   } catch (e) {
-    message.value = (e as ApiError).message;
+    message.value = errorText(e);
   }
 });
+async function finish() {
+  session.user = user.value;
+  await router.replace('/w/internal/organizations');
+}
 async function complete() {
   if (info.value?.purpose === 'activate' && password.value !== confirm.value) {
     message.value = 'The passwords do not match.';
@@ -41,7 +46,7 @@ async function complete() {
     codes.value = result.recoveryCodes;
     user.value = result.user;
   } catch (e) {
-    message.value = (e as ApiError).message;
+    message.value = errorText(e);
   } finally {
     busy.value = false;
   }
@@ -95,7 +100,7 @@ async function complete() {
         ><input v-model="saved" type="checkbox" style="width: auto" /> I have saved these
         codes</label
       >
-      <button type="button" :disabled="!saved" @click="emit('done', user!)">Continue</button>
+      <button type="button" :disabled="!saved" @click="finish">Continue</button>
     </template>
   </section>
 </template>

@@ -2471,7 +2471,8 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 - 恢复码不能用于 step-up。
 
 ### 12.5 团队成员页(取代 2.7)
-- 入口与权限同 2.7(仅 admin)。
+- 入口与权限同 2.7(仅 admin)。非 admin 无论直接打开还是从别的页面切换进来,都显示「Administrator access is required.」
+  (统一 2.7 的待核项)。
 - 列表列:Member、Email、Role、Status(Invited / Active / Disabled)、Last login。按创建时间升序。
 - 「Add member」:Name(必填,≤80)、Email(必填,唯一)、Role(四级,各附一句说明)。提交后显示一次性邀请链接和
   复制按钮,说明「Send this link to the member. It expires in 72 hours and is shown only once.」。不再有初始密码。
@@ -2503,7 +2504,10 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 - Revoke:确认后立即失效。
 - admin 在成员页每个成员的详情里能看到并吊销其令牌。
 - 令牌用法:`Authorization: Bearer <token>`;不带 Cookie;不受 Origin 校验(2.1)约束;受同样的角色与可见性规则约束;
-  写审计时 `via=agent_token`。
+  写审计时 `via=agent_token`。生效角色取令牌角色与成员**当前**角色中较低者;成员停用后令牌全部吊销。
+- 令牌**不能**做的事(返回 403「This action requires an interactive session.」):影响实盘的操作(12.1)、
+  改角色 / 停用 / 恢复 / 重置验证器 / 强制登出 / 重发邀请、创建或吊销令牌、改密码、重新生成恢复码。
+  令牌**可以**邀请成员(admin 令牌),并可传入 `id`,供迁移保留 v1 成员 id(proposal §9)。
 
 ### 12.7 交易账户(`/w/internal/accounts`)
 - 入口:侧栏新分组「Trading」下的「Accounts」,trader 与 admin 可见;其他角色访问返回 404,侧栏不显示。
@@ -2574,7 +2578,8 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 ### 12.10 审计日志(`/w/internal/audit`)
 - 入口:侧栏 Administration 下的「Audit log」,仅 admin。
 - 列表:Time、Actor(令牌调用时加「via token <name>」)、Action(可读标签)、Target、Step-up(✓)、Notification
-  (Sent / Failed / —)。时间倒序,每页 50 条。
+  (Sent / Failed / Pending / —)。时间倒序,每页 50 条,「Load more」继续。
+- `?event=<id>`(通知邮件里的链接):从该事件开始列出并展开它。
 - 筛选:Actor、Action 类别(Accounts / HFT / Members / Tokens / Login)、Target 文本、时间范围。筛选写在 URL query。
 - 展开一行显示改前 / 改后字段对照;密钥列只显示「changed」。
 - 只读,没有删除或编辑入口。

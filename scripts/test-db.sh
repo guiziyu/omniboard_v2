@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 私有测试 PG:本仓库 .pgdata 下的独立实例,只开 unix socket(不监听 TCP),不需要 sudo,
-# 不碰机器上已有的 PG。用法:scripts/test-db.sh up|down|url
+# 不碰机器上已有的 PG。用法:scripts/test-db.sh up|down|url|clean
 set -euo pipefail
 cd "$(dirname "$0")/.."
 BIN=${PG_BIN:-/usr/lib/postgresql/16/bin}
@@ -21,5 +21,10 @@ case "${1:-}" in
     url ;;
   down) "$BIN/pg_ctl" -D "$DATA" -w stop >/dev/null && echo stopped ;;
   url) url ;;
-  *) echo "usage: $0 up|down|url" >&2; exit 2 ;;
+  clean)
+    # 删掉残留的测试库(测试进程被强杀时没来得及删)。
+    for db in $(psql "$(url)" -XAtc "SELECT datname FROM pg_database WHERE datname LIKE 'omniboard\_test\_%'"); do
+      psql "$(url)" -XqAtc "DROP DATABASE \"$db\" WITH (FORCE)" && echo "dropped $db"
+    done ;;
+  *) echo "usage: $0 up|down|url|clean" >&2; exit 2 ;;
 esac

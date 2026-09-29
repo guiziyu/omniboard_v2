@@ -177,7 +177,7 @@ CREATE TABLE omniboard.audit_event (
   id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   at           timestamptz NOT NULL DEFAULT now(),
   actor_id     text NOT NULL REFERENCES omniboard.member(id),
-  via          text NOT NULL CHECK (via IN ('session','agent_token','cli')),  -- cli:bootstrap-admin
+  via          text NOT NULL CHECK (via IN ('session','agent_token','cli','system')),  -- cli:bootstrap-admin;system:notify_result
   agent_token_id text REFERENCES omniboard.agent_token(id),
   action       text NOT NULL,     -- 枚举见下
   target_table text NOT NULL,     -- 如 management.authentication
@@ -185,12 +185,16 @@ CREATE TABLE omniboard.audit_event (
   before       jsonb,             -- 密钥列一律写成 {"changed": true} / 不出现,不写值
   after        jsonb,
   step_up      boolean NOT NULL,  -- 是否当场重新输入了 TOTP
-  notify       text NOT NULL CHECK (notify IN ('none','sent','failed'))
+  notify_required boolean NOT NULL  -- 需要通知 owner(frontend-spec 12.11)
 );
 ```
 
-- 与业务写入同一事务提交(proposal §4)。需要通知的事件写入时 `notify='none'`;表只追加,邮件发送结果
-  另写一条 `action='notify_result'` 事件(`after` 里记原事件 id 与结果),审计页把两条合并显示。
+- 与业务写入同一事务提交(proposal §4)。
+- 通知走 outbox:需要通知的事件写 `notify_required=true`;提交后由发送器取出尚无结果的事件发送,
+  结果另写一条 `action='notify_result'`、`via='system'` 的事件(`after` = `{eventId, result, error?}`),
+  失败不重试。写请求结束时触发一次,服务进程每分钟补投一次。审计页把两条合并成 Sent / Failed / Pending。
+- 写入前按字段名脱敏:`api_key`、`api_secret`、`api_pass`、`password`、`passphrase`(含驼峰写法)的值一律写成
+  `"changed"`,即使调用方误传也不落库。
 - `action` 取值:`auth.create`、`auth.update_tags`、`auth.update_whitelist`、`auth.update_owner`、`auth.rotate_key`、
   `auth.terminate`、`hft_config.update`、`hft_config.create`、`hft_restart.request`、`member.invite`、`member.role`、
   `member.disable`、`member.enable`、`member.reset_totp`、`session.revoke`、`agent_token.create`、`agent_token.revoke`、

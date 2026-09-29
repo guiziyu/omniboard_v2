@@ -2,6 +2,7 @@ import { appConfig } from './config';
 import { openPool } from './db';
 import { buildApp } from './app';
 import { expectedVersion, schemaVersion } from './migrate';
+import { deliverPending } from './notifications';
 const config = appConfig();
 const pool = openPool(config.pgUrl);
 // 结构版本不符就不启动(deploy.sh 同样自检,proposal §3)。
@@ -28,10 +29,18 @@ const app = await buildApp({
   logger: true,
   development: config.development,
 });
+// 通知通道(SES,D5)尚未接入:sender 为 undefined,事件记为 failed。每分钟补投一次未处理的事件。
+const sender = undefined;
+const notifyTimer = setInterval(
+  () => void deliverPending(pool, sender, config.origin).catch((e: unknown) => app.log.error(e)),
+  60_000,
+);
+notifyTimer.unref();
 let closing = false;
 async function stop() {
   if (closing) return;
   closing = true;
+  clearInterval(notifyTimer);
   await app.close();
   lockClient.release();
   await pool.end();

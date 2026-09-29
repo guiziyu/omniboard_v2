@@ -11,6 +11,7 @@ import {
   Problem,
   atLeast,
   beginTotp,
+  changePassword,
   completeActivation,
   endSession,
   inviteInfo,
@@ -18,16 +19,38 @@ import {
   inviteMember,
   login,
   problem,
+  recoveryCodesLeft,
+  regenerateRecoveryCodes,
   roles,
   sessionUser,
   type AuthContext,
   type Role,
   type User,
 } from './auth';
+import { auditCategories, listAudit, type Actor } from './audit';
+import {
+  changeRole,
+  disableMember,
+  enableMember,
+  listMembers,
+  resendInvite,
+  resetAuthenticator,
+  signOutMember,
+} from './members';
+import {
+  createToken,
+  listTokens,
+  revokeToken,
+  tokenLifetimes,
+  tokenPrincipal,
+  tokenRoles,
+} from './tokens';
+import { deliverPending, type Sender } from './notifications';
 import { expectedVersion, schemaVersion } from './migrate';
 declare module 'fastify' {
   interface FastifyRequest {
     user: User;
+    actor: Actor;
   }
 }
 export type AppOptions = {
@@ -38,13 +61,24 @@ export type AppOptions = {
   logger?: boolean;
   serveStatic?: boolean;
   development?: boolean;
+  /** 通知发送通道(D5);undefined = 未配置,结果记为 failed。 */
+  sender?: Sender;
+  /** 写请求结束后自动投递通知;测试里关掉,手动调用 deliverPending。 */
+  autoNotify?: boolean;
 };
 const COOKIE = 'omniboard_session';
 // 不需要会话的接口。
 const publicRoutes = new Set(['/api/health', '/api/session', '/api/login', '/api/activate/:token']);
 const isPublic = (route: string) => publicRoutes.has(route) || route.startsWith('/api/activate/');
 // reader 可以做的写操作(frontend-spec 0.2);其余在 onRequest 统一拒绝。
-const readerWrites = new Set(['/api/logout', '/api/preferences']);
+const readerWrites = new Set([
+  '/api/logout',
+  '/api/preferences',
+  '/api/tokens',
+  '/api/tokens/:tokenId',
+  '/api/security/password',
+  '/api/security/recovery-codes',
+]);
 const writeMethods = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 export function requireRole(request: FastifyRequest, min: Role): void {
   if (!atLeast(request.user.role, min))
@@ -57,6 +91,12 @@ export function requireRole(request: FastifyRequest, min: Role): void {
           : 'This role has read-only access.',
     );
 }
+/** 令牌调用不能做需要人在场的操作(当场确认、成员与令牌管理,frontend-spec 12.6)。 */
+export function requireInteractive(request: FastifyRequest): void {
+  if (request.actor.via !== 'session') problem(403, 'This action requires an interactive session.');
+}
+const bearerOf = (request: FastifyRequest) =>
+  /^Bearer (\S+)$/.exec(request.headers.authorization ?? '')?.[1];
 export async function buildApp(options: AppOptions) {
   const ctx: AuthContext = {
     pool: options.pool,
@@ -72,6 +112,7 @@ export async function buildApp(options: AppOptions) {
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   app.decorateRequest('user');
+  app.decorateRequest('actor');
   app.setErrorHandler((error, request, reply) => {
     const status =
       error instanceof z.ZodError
@@ -103,11 +144,26 @@ export async function buildApp(options: AppOptions) {
     const route = request.routeOptions.url || request.url.split('?')[0]!;
     if (!route.startsWith('/api/')) return;
     reply.header('Cache-Control', 'no-store');
-    if (writeMethods.has(request.method) && !allowedOrigins.has(request.headers.origin ?? ''))
+    const bearer = bearerOf(request);
+    // 令牌不随浏览器自动携带,不需要 Origin 校验;Cookie 请求需要。
+    if (
+      !bearer &&
+      writeMethods.has(request.method) &&
+      !allowedOrigins.has(request.headers.origin ?? '')
+    )
       problem(403, 'Request origin is not allowed.');
     if (isPublic(route)) return;
-    const user = await sessionUser(ctx, request.cookies[COOKIE]);
-    if (!user) problem(401, 'Sign in to continue.');
+    let user: User | undefined;
+    if (bearer) {
+      const principal = await tokenPrincipal(ctx, bearer);
+      if (!principal) problem(401, 'The API token is invalid, expired or revoked.');
+      user = principal.user;
+      request.actor = { id: user.id, via: 'agent_token', agentTokenId: principal.agentTokenId };
+    } else {
+      user = await sessionUser(ctx, request.cookies[COOKIE]);
+      if (!user) problem(401, 'Sign in to continue.');
+      request.actor = { id: user.id, via: 'session' };
+    }
     request.user = user;
     if (user.role === 'reader' && writeMethods.has(request.method) && !readerWrites.has(route))
       problem(403, 'This role has read-only access.');
@@ -181,15 +237,19 @@ export async function buildApp(options: AppOptions) {
     },
   );
 
+  const at = () => new Date(ctx.now());
+  const memberParam = z.object({ id: z.string().min(1).max(100) });
+  const tokenIdParam = z.object({ tokenId: z.string().min(1).max(100) });
+
+  // ---- 团队成员(frontend-spec 12.5) ----
   app.get('/api/members', async (request) => {
     requireRole(request, 'admin');
-    const result = await options.pool.query(
-      'SELECT id, name, email, role, status, last_login_at AS "lastLoginAt", created_at AS "createdAt" FROM omniboard.member ORDER BY created_at, id',
-    );
-    return result.rows;
+    return listMembers(options.pool, at());
   });
   const memberSchema = z
     .object({
+      // agent 迁移时传入 v1 原 id(proposal §5、§9)。
+      id: z.string().trim().min(1).max(100).optional(),
       name: z.string().trim().min(1).max(80),
       email: z.email().max(200),
       role: z.enum(roles),
@@ -199,10 +259,146 @@ export async function buildApp(options: AppOptions) {
     requireRole(request, 'admin');
     const input = memberSchema.parse(request.body);
     const invited = await tx(options.pool, (client) =>
-      inviteMember(client, ctx, { id: request.user.id, via: 'session' }, input),
+      inviteMember(client, ctx, request.actor, input),
     );
     return { id: invited.id, inviteLink: inviteLink(options.origin, invited.token) };
   });
+  const adminAction = (request: FastifyRequest) => {
+    requireRole(request, 'admin');
+    requireInteractive(request);
+    return memberParam.parse(request.params).id;
+  };
+  app.patch('/api/members/:id', async (request) => {
+    const memberId = adminAction(request);
+    const { role } = z
+      .object({ role: z.enum(roles) })
+      .strict()
+      .parse(request.body);
+    await changeRole(ctx, request.actor, memberId, role);
+    return { ok: true };
+  });
+  app.post('/api/members/:id/disable', async (request) => {
+    await disableMember(ctx, request.actor, adminAction(request));
+    return { ok: true };
+  });
+  app.post('/api/members/:id/enable', async (request) => {
+    await enableMember(ctx, request.actor, adminAction(request));
+    return { ok: true };
+  });
+  app.post('/api/members/:id/reset-authenticator', async (request) => {
+    const token = await resetAuthenticator(ctx, request.actor, adminAction(request));
+    return { inviteLink: inviteLink(options.origin, token) };
+  });
+  app.post('/api/members/:id/resend-invite', async (request) => {
+    const token = await resendInvite(ctx, request.actor, adminAction(request));
+    return { inviteLink: inviteLink(options.origin, token) };
+  });
+  app.post('/api/members/:id/sign-out', async (request) => {
+    await signOutMember(ctx, request.actor, adminAction(request));
+    return { ok: true };
+  });
+  app.get('/api/members/:id/tokens', async (request) => {
+    requireRole(request, 'admin');
+    return listTokens(options.pool, memberParam.parse(request.params).id, at());
+  });
+  app.delete('/api/members/:id/tokens/:tokenId', async (request) => {
+    const memberId = adminAction(request);
+    await revokeToken(ctx, request.actor, memberId, tokenIdParam.parse(request.params).tokenId);
+    return { ok: true };
+  });
+
+  // ---- 本人的 API 令牌与安全设置(frontend-spec 12.6) ----
+  app.get('/api/tokens', async (request) => listTokens(options.pool, request.user.id, at()));
+  const tokenSchema = z
+    .object({
+      name: z.string().trim().min(1).max(80),
+      role: z.enum(tokenRoles),
+      expiresInDays: z.union(tokenLifetimes.map((d) => z.literal(d))).default(30),
+    })
+    .strict();
+  app.post('/api/tokens', async (request) => {
+    requireInteractive(request);
+    return createToken(ctx, request.actor, request.user, tokenSchema.parse(request.body));
+  });
+  app.delete('/api/tokens/:tokenId', async (request) => {
+    requireInteractive(request);
+    await revokeToken(
+      ctx,
+      request.actor,
+      request.user.id,
+      tokenIdParam.parse(request.params).tokenId,
+    );
+    return { ok: true };
+  });
+  app.get('/api/security', async (request) => ({
+    recoveryCodesLeft: await recoveryCodesLeft(options.pool, request.user.id),
+  }));
+  app.post('/api/security/password', async (request) => {
+    requireInteractive(request);
+    const input = z
+      .object({ current: z.string().max(200), next: z.string().min(12).max(200) })
+      .strict()
+      .parse(request.body);
+    await changePassword(ctx, request.user.id, input);
+    return { ok: true };
+  });
+  app.post('/api/security/recovery-codes', async (request) => {
+    requireInteractive(request);
+    const { code } = z
+      .object({ code: z.string().max(10) })
+      .strict()
+      .parse(request.body);
+    return { recoveryCodes: await regenerateRecoveryCodes(ctx, request.user.id, code) };
+  });
+  // frontend-spec 2.9:reader 也可以改;只接受 locale。
+  app.patch('/api/preferences', async (request) => {
+    const { locale } = z
+      .object({ locale: z.enum(['en', 'zh-CN', 'ko']) })
+      .strict()
+      .parse(request.body);
+    await options.pool.query(
+      `INSERT INTO omniboard.member_preference (member_id, locale) VALUES ($1,$2)
+       ON CONFLICT (member_id) DO UPDATE SET locale = EXCLUDED.locale`,
+      [request.user.id, locale],
+    );
+    return { locale };
+  });
+
+  // ---- 审计日志(frontend-spec 12.10) ----
+  const auditQuery = z
+    .object({
+      actor: z.string().max(100).optional(),
+      category: z.enum(Object.keys(auditCategories) as [keyof typeof auditCategories]).optional(),
+      target: z.string().max(200).optional(),
+      from: z.iso.date().optional(),
+      to: z.iso.date().optional(),
+      before: z.string().regex(/^\d+$/).max(20).optional(),
+    })
+    .strict();
+  app.get('/api/audit', async (request) => {
+    requireRole(request, 'admin');
+    const q = auditQuery.parse(request.query);
+    // 日期按 UTC 日界;to 含当天。
+    const to = q.to
+      ? new Date(Date.parse(`${q.to}T00:00:00Z`) + 86_400_000).toISOString()
+      : undefined;
+    return listAudit(options.pool, {
+      actorId: q.actor,
+      category: q.category,
+      target: q.target,
+      from: q.from ? `${q.from}T00:00:00Z` : undefined,
+      to,
+      before: q.before,
+    });
+  });
+
+  if (options.autoNotify !== false)
+    app.addHook('onResponse', async (request) => {
+      if (writeMethods.has(request.method))
+        void deliverPending(options.pool, options.sender, options.origin).catch((e) =>
+          request.log.error(e),
+        );
+    });
 
   const dist = resolve('dist');
   if (options.serveStatic !== false && existsSync(dist)) {
