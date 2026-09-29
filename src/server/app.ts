@@ -49,6 +49,7 @@ import { requireInteractive, requireRole } from './access';
 import type { EvidenceStore } from './evidence';
 import { registerOrganizationRoutes } from './organization-routes';
 import { registerKnowledgeRoutes } from './knowledge-routes';
+import { registerWorkRoutes } from './work-routes';
 export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
@@ -378,6 +379,7 @@ export async function buildApp(options: AppOptions) {
   const deps = { pool: options.pool, store: options.evidence, now: ctx.now };
   registerOrganizationRoutes(app, deps);
   registerKnowledgeRoutes(app, deps);
+  registerWorkRoutes(app, deps);
 
   if (options.autoNotify !== false)
     app.addHook('onResponse', async (request) => {

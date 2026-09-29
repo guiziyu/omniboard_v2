@@ -6,9 +6,9 @@ import { problem } from './auth';
 import { requireImport } from './access';
 import { checkEvidence } from './records';
 import type { Visibility } from '../shared/types';
-// 共享对象、结论、关系、身份决定与活动历史的迁移导入(data-model §3.4、§3.3;proposal §9)。
+// 共享对象、结论、关系、身份决定、任务与活动历史的迁移导入(data-model §3.4、§3.3;proposal §9)。
 // 只在导入窗口内由 admin 令牌调用;以 id 为键,已存在返回 409(与记录导入相同),重定向按对幂等。
-// 外键指向的对象、记录、证据和成员必须先导入。
+// 外键指向的对象、记录、证据和成员必须先导入;任务按前置在前的顺序导入。
 
 const key = z.string().min(1).max(200);
 const day = z.union([z.literal(''), z.iso.date()]).default('');
@@ -92,6 +92,31 @@ const identityEventImport = z
     authorId: key,
     createdAt: at,
     reversesId: z.union([key, z.literal('')]).default(''),
+  })
+  .strict();
+const taskImport = z
+  .object({
+    id: key,
+    organizationId: key,
+    title: z.string().trim().min(1).max(160),
+    lane: z.enum(['business', 'engineering', 'compliance', 'research']),
+    state: z.enum(['planned', 'active', 'waiting', 'done', 'skipped']),
+    origin: z.enum(['standard', 'discovery']),
+    templateKey: z.union([key, z.literal('')]).default(''),
+    ownerId: z.union([key, z.literal('')]).default(''),
+    description: z.string().max(4000).default(''),
+    nextStep: z.string().max(1500).default(''),
+    completionCriteria: z.string().max(2000).default(''),
+    followUpOn: day,
+    outcome: z.string().max(10000).default(''),
+    dueOn: day,
+    visibility: z.enum(['team', 'admin']),
+    sourceRecordId: z.union([key, z.literal('')]).default(''),
+    evidenceId: key,
+    revision: z.number().int().positive(),
+    updatedAt: at,
+    dependencies: z.array(key).max(50).default([]),
+    objectIds: z.array(key).max(30).default([]),
   })
   .strict();
 const operationEventImport = z
@@ -255,6 +280,86 @@ export function registerKnowledgeImport(app: FastifyInstance, pool: Pool) {
       ))
     )
       problem(409, 'This item has already been imported.');
+    return true;
+  });
+  route('/api/import/work-tasks', taskImport, async (client, input) => {
+    if ((input.origin === 'standard') !== !!input.templateKey)
+      problem(422, 'Standard tasks need a template key; discovered tasks have none.');
+    await checkEvidence(client, input.evidenceId, input.visibility);
+    const restricted = 'Restricted evidence requires an administrator-only item.';
+    if (input.sourceRecordId) {
+      const source = (
+        await client.query<{ organization_id: string; visibility: Visibility }>(
+          'SELECT organization_id, visibility FROM omniboard.module_records WHERE id = $1',
+          [input.sourceRecordId],
+        )
+      ).rows[0];
+      if (!source) problem(422, 'A referenced item has not been imported yet.');
+      if (source.organization_id !== input.organizationId)
+        problem(422, 'The source record is not available in this organization.');
+      if (source.visibility === 'admin' && input.visibility === 'team') problem(422, restricted);
+    }
+    const prerequisites = await client.query<{ organization_id: string; visibility: Visibility }>(
+      'SELECT organization_id, visibility FROM omniboard.work_tasks WHERE id = ANY($1)',
+      [input.dependencies],
+    );
+    if (prerequisites.rowCount !== new Set(input.dependencies).size)
+      problem(422, 'A referenced item has not been imported yet.');
+    if (prerequisites.rows.some((p) => p.organization_id !== input.organizationId))
+      problem(422, 'A prerequisite must be an accessible task in this organization.');
+    if (input.visibility === 'team' && prerequisites.rows.some((p) => p.visibility === 'admin'))
+      problem(422, 'A team task cannot depend on a restricted task.');
+    const objects = await client.query<{ visibility: Visibility }>(
+      'SELECT visibility FROM omniboard.knowledge_objects WHERE id = ANY($1)',
+      [input.objectIds],
+    );
+    if (objects.rowCount !== new Set(input.objectIds).size)
+      problem(422, 'A referenced item has not been imported yet.');
+    if (input.visibility === 'team' && objects.rows.some((o) => o.visibility === 'admin'))
+      problem(422, restricted);
+    if (
+      !(await insert(
+        client,
+        `INSERT INTO omniboard.work_tasks
+           (id, organization_id, title, lane, state, origin, template_key, owner_id, description,
+            next_step, completion_criteria, follow_up_on, outcome, due_on, visibility,
+            source_record_id, evidence_id, revision, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          input.id,
+          input.organizationId,
+          input.title,
+          input.lane,
+          input.state,
+          input.origin,
+          input.templateKey || null,
+          input.ownerId || null,
+          input.description,
+          input.nextStep,
+          input.completionCriteria,
+          input.followUpOn || null,
+          input.outcome,
+          input.dueOn || null,
+          input.visibility,
+          input.sourceRecordId || null,
+          input.evidenceId,
+          input.revision,
+          input.updatedAt,
+        ],
+      ))
+    )
+      problem(409, 'This item has already been imported.');
+    for (const dep of new Set(input.dependencies))
+      await client.query(
+        'INSERT INTO omniboard.task_dependencies (task_id, prerequisite_id) VALUES ($1, $2)',
+        [input.id, dep],
+      );
+    for (const objectId of new Set(input.objectIds))
+      await client.query(
+        'INSERT INTO omniboard.task_objects (task_id, object_id) VALUES ($1, $2)',
+        [input.id, objectId],
+      );
     return true;
   });
   route('/api/import/operation-events', operationEventImport, async (client, input) => {

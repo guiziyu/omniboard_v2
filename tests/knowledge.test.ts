@@ -10,8 +10,8 @@ import type { ExplorationGraph } from '../src/shared/exploration';
 import type { KnowledgeObject } from '../src/shared/operations';
 import { harness, tokenOf } from './helpers';
 // 共享对象、结论、关系与跨机构身份(frontend-spec 7.4、7.10–7.14)。
-// v1 tests/exploration(第二个)、operations(objects share source records)、identities 的断言逐条保留;
-// 任务相关的断言(任务引用随身份合并与撤销改变)随工作台(§10)迁移。v1 的 knowledge 接口并入 exploration。
+// v1 tests/exploration(第二个)、operations(objects share source records)、identities 的断言逐条保留。
+// v1 的 knowledge 接口并入 exploration。
 // 单 workspace 之后「其他 workspace 的对象」不再存在,那条断言去掉。
 
 async function setup(t: { after: (fn: () => Promise<void>) => void }) {
@@ -374,7 +374,7 @@ test('objects share source records, claims retain conflicting and historical evi
   );
 });
 
-test('shared identities span organizations, preserve scoped claims, and merge reversibly', async (t) => {
+test('shared identities span organizations, preserve scoped claims and task links, and merge reversibly', async (t) => {
   const { call, sql, org, position, graph, detail } = await setup(t);
   const a = await org('Identity Alpha');
   const b = await org('Identity Beta');
@@ -433,6 +433,15 @@ test('shared identities span organizations, preserve scoped claims, and merge re
     sourceRecordId: rb,
   });
   assert.equal(relation.statusCode, 201, relation.body);
+  const task = await call('POST', `/api/organizations/${b}/work/tasks`, {
+    title: 'Fixture follow-up',
+    lane: 'business',
+    objectIds: [ob],
+    sourceRecordId: rb,
+  });
+  assert.equal(task.statusCode, 201, task.body);
+  const taskObjects = async () =>
+    (await call('GET', `/api/work?organizationId=${b}`)).json().tasks[0].objectIds;
   const recordsBefore = (await sql('SELECT * FROM omniboard.module_records ORDER BY id')).rows;
   const claimsBefore = (
     await sql('SELECT id, object_id, evidence_id FROM omniboard.knowledge_claims ORDER BY id')
@@ -479,6 +488,11 @@ test('shared identities span organizations, preserve scoped claims, and merge re
       .id,
     oa,
     'Old names remain searchable.',
+  );
+  assert.deepEqual(await taskObjects(), [oa]);
+  assert.ok(
+    (await graph(a)).tasks.some((x) => x.id === task.json().id),
+    'work linked to the merged identity appears on every organization of the identity',
   );
   const extra = await claim(oa, ra, 'Alternative Alpha claim');
   let data = await graph(a);
@@ -535,6 +549,7 @@ test('shared identities span organizations, preserve scoped claims, and merge re
     (await detail(ob)).object.records.map((r) => r.id),
     [rb],
   );
+  assert.deepEqual(await taskObjects(), [ob]);
   assert.equal(
     (
       await undo({

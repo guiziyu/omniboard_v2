@@ -67,6 +67,7 @@ async function logout() {
     <aside class="sidebar">
       <RouterLink to="/w/internal/organizations" class="brand">Omniboard</RouterLink>
       <nav aria-label="Main">
+        <RouterLink to="/w/internal/work">Work</RouterLink>
         <RouterLink
           to="/w/internal/organizations"
           :class="{ 'router-link-active': inOrganizations }"

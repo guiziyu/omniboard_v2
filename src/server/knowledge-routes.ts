@@ -11,6 +11,7 @@ import {
   claimInput,
   createObject,
   exploration,
+  knowledgeGraph,
   objectRows,
   identityHistory,
   identitySearch,
@@ -27,6 +28,7 @@ import {
   unlinkRecord,
 } from './knowledge';
 import { registerKnowledgeImport } from './knowledge-import';
+import { explorationTasks } from './work';
 // 关系与证据的接口(frontend-spec 7)。读取任何角色可用,写入要 editor 以上。
 const idParam = z.object({ id: z.string().min(1).max(200) });
 export function registerKnowledgeRoutes(app: FastifyInstance, deps: OrganizationDeps) {
@@ -35,7 +37,13 @@ export function registerKnowledgeRoutes(app: FastifyInstance, deps: Organization
 
   app.get('/api/organizations/:id/exploration', async (request) => {
     const org = await getOrganization(pool, idParam.parse(request.params).id, request.user.role);
-    return exploration(pool, org, request.user, today());
+    const graph = await exploration(pool, org, request.user, today());
+    return { ...graph, tasks: await explorationTasks(pool, request.user, graph) };
+  });
+  // 任务计划对话框的候选对象与来源记录(10.6)。
+  app.get('/api/organizations/:id/knowledge', async (request) => {
+    const org = await getOrganization(pool, idParam.parse(request.params).id, request.user.role);
+    return knowledgeGraph(pool, request.user, today(), org.id);
   });
   // 记录详情的「关联对象」与联系人合并卡片(5.2、5.3)。
   app.get('/api/organizations/:id/objects', async (request) => {

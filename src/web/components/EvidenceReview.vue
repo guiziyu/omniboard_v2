@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 证据对照(frontend-spec 7.12),从 v1 EvidenceReview.vue 迁移。「Create follow-up task」随工作台(§10)迁移。
+// 证据对照(frontend-spec 7.12),从 v1 EvidenceReview.vue 迁移。
 import { computed } from 'vue';
 import type { KnowledgeClaim, KnowledgeGraph } from '../../shared/operations';
 import type { ExplorationGraph } from '../../shared/exploration';
@@ -17,7 +17,7 @@ const props = defineProps<{
   objectNames: Record<string, string>;
   today: string;
 }>();
-const emit = defineEmits<{ review: [claim: KnowledgeClaim] }>();
+const emit = defineEmits<{ review: [claim: KnowledgeClaim]; follow: [recordId: string] }>();
 const canEdit = computed(() => !!session.user && atLeast(session.user.role, 'editor'));
 const groups = computed(() =>
   claimGroups(props.claims.filter((c) => props.historical || c.status !== 'superseded')),
@@ -129,6 +129,14 @@ const status = (c: KnowledgeClaim) =>
               @click="emit('review', c)"
             >
               {{ tr('Review & adopt') }}
+            </button>
+            <button
+              v-if="c.sourceRecordId && canEdit"
+              type="button"
+              class="link"
+              @click="emit('follow', c.sourceRecordId)"
+            >
+              {{ tr('Create follow-up task') }}
             </button>
           </div>
           <details v-if="decisions.some((d) => d.claimId === c.id)" class="decision-history">

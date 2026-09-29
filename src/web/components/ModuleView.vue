@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // 一个模块 tab 的内容(frontend-spec 4.3、4.4、5.1、5.2、5.4),从 v1 ModuleView.vue 迁移。
-// 尚未迁移的专用面板(registry.ts pendingModules)显示「正在迁移」;「Create follow-up task」
-// 随工作台(§10)一起迁移。
+// 尚未迁移的专用面板(registry.ts pendingModules)显示「正在迁移」。
 import { computed, nextTick, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { api, atLeast, session } from '../api';
@@ -518,6 +517,15 @@ const showList = computed(
                   :to="{ path: relationshipsPath, query: { sourceRecord: record.id } }"
                 >
                   {{ tr('Connect to a shared object') }}
+                </RouterLink>
+                <RouterLink
+                  v-if="canEdit"
+                  :to="{
+                    path: '/w/internal/work',
+                    query: { organizationId: organization.id, sourceRecord: record.id },
+                  }"
+                >
+                  {{ tr('Create follow-up task') }}
                 </RouterLink>
               </p>
               <footer class="record-footer">

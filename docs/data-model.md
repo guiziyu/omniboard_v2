@@ -145,6 +145,18 @@
   `organizationId`,即 v1 的 claim context)、`knowledge-relations`、`identity-redirects`(按对幂等)、
   `identity-events`、`operation-events`(以 `importId` 为键)。team 对象不能引用 admin 记录或证据。
 
+实现补充(工作台任务,`006_work.sql`):
+- `work_tasks.raw_id` 改名 `evidence_id`;`follow_up_on`、`due_on` 按业务日期约定(`''` 记为 `NULL`,API 仍返回 `''`)。
+  加约束 `origin = 'standard'` 当且仅当有 `template_key`(v1 由代码保证)。
+- `task_objects` 存原对象 id;读取时按身份重定向改指规范对象,撤销合并后回到原对象(frontend-spec 7.14),不改写这张表。
+- 同一机构的任务写入用事务级 advisory lock 串行:前置环检测、重开检查与标准计划的幂等读到的都是已提交状态。
+- 负责人须是未停用的成员(v1 为 workspace 成员);已停用成员名下的任务保留负责人。
+- 任务的 API 另带 `sourceRecordTabId`(来源记录所在的 tab):情报页(§8)移植前,「Open source information」
+  直接打开来源记录。
+- 导入接口 `/api/import/work-tasks`(规则同上):带 `dependencies`、`objectIds`,前置任务须先导入
+  (v1 任务的依赖无环,按拓扑序即可);负责人、来源记录、证据、对象须先导入;team 任务不能引用 admin 的
+  来源、证据、前置或对象;保留 v1 的 `revision` 与 `updatedAt`。
+
 ### 3.5 不再存在的 v1 表
 
 `workspaces`、`sessions`(4.1 重做)、`memberships`(4.1 重做)、`member_preferences`(并入 `member_preference`)、

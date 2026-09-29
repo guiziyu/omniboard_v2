@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // 关系与证据页(frontend-spec 7.1–7.3、7.9–7.11、7.13),从 v1 KnowledgePanel.vue 迁移。
-// 「与该证据相关的工作」和「创建跟进任务」随工作台(§10)一起迁移。
 import { computed, nextTick, reactive, ref, toRefs, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, atLeast, errorText, session } from '../api';
 import { tr } from '../i18n';
 import { dateTime, sourceName } from '../labels';
 import { openEvidence } from '../evidence';
+import { taskText } from '../task-text';
+import { taskStates } from '../../shared/operations';
 import { profileLink as explorationDestination } from '../exploration-links';
 import { useExplorationView } from '../exploration-view';
 import type { ObjectKind, KnowledgeClaim } from '../../shared/operations';
@@ -164,6 +165,26 @@ const claims = computed(
     ) || [],
 );
 const conflicts = computed(() => claims.value.filter((c) => c.conflict).length);
+// 「Work linked to this evidence」(7.9):关联了该对象,或以该节点的来源记录为来源的任务。
+const relatedTasks = computed(
+  () =>
+    graph.value?.tasks.filter(
+      (t) =>
+        t.objectIds.includes(selectedId.value) ||
+        selectedNode.value?.recordIds.includes(t.sourceRecordId),
+    ) || [],
+);
+/** 以该记录为来源新建任务(10.6 的 sourceRecord 预填);机构取记录所在的机构。 */
+const follow = (id: string) =>
+  void router.push({
+    path: '/w/internal/work',
+    query: {
+      organizationId:
+        graph.value?.contextRecords.find((r) => r.id === id)?.organizationId ||
+        props.organizationId,
+      sourceRecord: id,
+    },
+  });
 function selectNode(id: string) {
   selectedId.value = id;
   selectedEdge.value = undefined;
@@ -626,6 +647,7 @@ function openRecord(id: string, tabId: string) {
             :historical="historical"
             :today="today()"
             @review="review"
+            @follow="follow"
           />
           <section v-if="mode === 'sources' || mode === 'evidence'" class="exploration-sources">
             <div class="work-heading">
@@ -667,6 +689,9 @@ function openRecord(id: string, tabId: string) {
                   <button type="button" class="link" @click="openRecord(record.id, record.tabId)">
                     {{ tr('Open source record') }}
                   </button>
+                  <button v-if="canEdit" type="button" class="link" @click="follow(record.id)">
+                    {{ tr('Create follow-up task') }}
+                  </button>
                 </div>
               </div>
             </details>
@@ -678,6 +703,20 @@ function openRecord(id: string, tabId: string) {
             >
               {{ tr('Show more source records') }}
             </button>
+          </section>
+          <section v-if="relatedTasks.length" class="exploration-tasks">
+            <h3>{{ tr('Work linked to this evidence') }}</h3>
+            <RouterLink
+              v-for="task in relatedTasks"
+              :key="task.id"
+              :to="{
+                path: '/w/internal/work',
+                query: { organizationId: task.organizationId, task: task.id },
+              }"
+            >
+              <span>{{ taskText(task) }}</span>
+              <small>{{ tr(taskStates[task.displayState]) }}</small>
+            </RouterLink>
           </section>
         </div>
       </div>

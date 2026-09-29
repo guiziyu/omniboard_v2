@@ -1,6 +1,5 @@
 <script setup lang="ts">
 // 讨论(Comments tab)与联系人对话记录(frontend-spec 5.9),从 v1 DiscussionPanel.vue 迁移。
-// 「Create follow-up task」随工作台(§10)一起迁移。
 import { computed, ref } from 'vue';
 import { api, atLeast, errorText, session } from '../api';
 import { tr } from '../i18n';
@@ -175,6 +174,15 @@ function reply(record: ModuleRecord) {
         <button v-if="!contact && canEdit" type="button" class="link" @click="emit('edit', record)">
           {{ tr('Edit') }}
         </button>
+        <RouterLink
+          v-if="canEdit"
+          :to="{
+            path: '/w/internal/work',
+            query: { organizationId: organization.id, sourceRecord: record.id },
+          }"
+        >
+          {{ tr('Create follow-up task') }}
+        </RouterLink>
       </footer>
       <article
         v-for="response in replies(record.id)"

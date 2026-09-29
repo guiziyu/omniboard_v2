@@ -480,6 +480,105 @@ test('workspace access pages', async ({ page }) => {
     await page.getByRole('button', { name: 'Back to organizations' }).click();
   });
 
+  await test.step('work: standard onboarding, task actions, dependencies, follow-up tasks', async () => {
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await nav.getByRole('link', { name: 'Work' }).click();
+    await expect(page.getByRole('heading', { name: 'Work', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'No active plan yet' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add from new information' })).toBeDisabled();
+    await page
+      .getByRole('combobox', { name: 'Organization' })
+      .selectOption({ label: 'Acme Exchange' });
+    await expect(page).toHaveURL(/organizationId=.*state=actionable/);
+
+    // 启动标准接入计划:9 项,只有 3 项可以马上开始(10.5)。
+    await page.getByRole('button', { name: 'Start standard onboarding' }).click();
+    const start = page.getByRole('dialog', { name: 'Start standard onboarding' });
+    await expect(start.locator('.template-task')).toHaveCount(9);
+    await start.getByRole('button', { name: 'Create onboarding plan' }).click();
+    await expect(start).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Start standard onboarding' })).toBeHidden();
+    const rows = page.locator('.task-queue-row');
+    await expect(rows).toHaveCount(3);
+
+    // 开始、完成,看解除阻塞的下游(10.4)。
+    await rows.filter({ hasText: 'Define account and product scope' }).click();
+    const scope = page.getByRole('dialog', { name: 'Define account and product scope' });
+    await expect(scope.getByLabel('Task action')).toHaveValue('active');
+    await expect(scope.getByLabel('Assign this task to me')).toBeChecked();
+    await scope.getByRole('button', { name: 'Start work' }).click();
+    await expect(scope.getByRole('status')).toContainText('Task updated.');
+    await expect(scope.locator('.task-state').first()).toHaveText('In progress');
+    await scope.getByLabel('Task action').selectOption('done');
+    await scope.getByLabel('Result or follow-up').fill('Entity and spot products agreed.');
+    await scope.getByLabel('Original evidence or decision note').fill('Scope memo from the desk.');
+    await scope.getByRole('button', { name: 'Complete task' }).click();
+    const feedback = scope.getByRole('status');
+    await expect(feedback).toContainText('Task completed. Your result and evidence are saved.');
+    await expect(feedback).toContainText('Confirm product and regional eligibility');
+    await feedback
+      .getByRole('button', { name: /Review the API and connector requirements/ })
+      .click();
+    const docs = page.getByRole('dialog', { name: 'Review the API and connector requirements' });
+    await expect(docs).toBeVisible();
+    await expect(docs.getByRole('heading', { name: 'Prerequisites' })).toBeVisible();
+
+    // 依赖图:点节点回到该任务的详情(10.7)。
+    await docs.getByRole('button', { name: 'View dependencies' }).click();
+    const map = page.getByRole('dialog', { name: 'Task dependencies' });
+    await expect(map.locator('.task-map-node')).toHaveCount(3);
+    await map.getByLabel('Focus task path').selectOption('');
+    await expect(map.locator('.task-map-node')).toHaveCount(9);
+    await map.getByRole('button', { name: /Validate the connection for our account/ }).click();
+    await expect(map).toBeHidden();
+    const validation = page.getByRole('dialog', {
+      name: 'Validate the connection for our account',
+    });
+    await expect(validation.locator('.task-state').first()).toHaveText('Waiting for prerequisites');
+    await page.keyboard.press('Escape');
+    await expect(validation).toBeHidden();
+
+    // 看板、全部任务;过滤写在 URL,并被记住(10.1、10.2)。
+    await page.getByRole('button', { name: 'Board' }).click();
+    await expect(page).toHaveURL(/layout=board/);
+    await expect(page.locator('.kanban-column')).toHaveCount(1);
+    await page.getByRole('button', { name: 'List' }).click();
+    await page.getByRole('combobox', { name: 'Status' }).selectOption('');
+    await expect(rows).toHaveCount(9);
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+    await nav.getByRole('link', { name: 'Work' }).click();
+    await expect(page).toHaveURL(/organizationId=.*state=&/);
+    await expect(rows).toHaveCount(9);
+
+    // 从记录创建跟进任务:来源预填,可见性继承记录(10.6);关系页列出相关工作(7.9)。
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Contacts', exact: true }).click();
+    const desk = page.locator('details.record-card').filter({ hasText: 'Acme institutional desk' });
+    await desk.locator('summary').click();
+    await desk.getByRole('link', { name: 'Create follow-up task' }).click();
+    const plan = page.getByRole('dialog', { name: 'New information → New task' });
+    await expect(plan.getByLabel('Task title')).toHaveValue('Follow up: Acme institutional desk');
+    await expect(plan.getByLabel('Source record')).not.toHaveValue('');
+    await plan.getByLabel('Next concrete step').fill('Ask the desk for API documentation.');
+    await plan.getByRole('button', { name: 'Save task' }).click();
+    await expect(plan).toBeHidden();
+    await expect(page).not.toHaveURL(/sourceRecord=/);
+    await expect(rows.filter({ hasText: 'Follow up: Acme institutional desk' })).toHaveCount(1);
+
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Contacts', exact: true }).click();
+    await desk.locator('summary').click();
+    await desk.getByRole('link', { name: 'Acme spot API · Connections & evidence' }).click();
+    await page.getByRole('link', { name: /Follow up: Acme institutional desk/ }).click();
+    const followUp = page.getByRole('dialog', { name: 'Follow up: Acme institutional desk' });
+    await expect(followUp).toContainText('Ask the desk for API documentation.');
+    await page.keyboard.press('Escape');
+    await expect(page).not.toHaveURL(/task=/);
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

@@ -20,6 +20,17 @@ const router = createRouter({
   },
   routes: [
     { path: '/', redirect: '/w/internal/organizations' },
+    {
+      path: '/w/internal/work',
+      component: () => import('./views/WorkView.vue'),
+      meta: { title: 'Work' },
+      // 旧链接 ?section=intelligence 转到情报页,其余查询参数保留(10.1)。
+      beforeEnter: (to) => {
+        if (to.query.section !== 'intelligence') return true;
+        const { section: _section, ...query } = to.query;
+        return { path: '/w/internal/intelligence', query, replace: true };
+      },
+    },
     { path: '/activate', component: () => import('./ActivateView.vue') },
     {
       path: '/w/internal/organizations',

@@ -18,7 +18,7 @@ import type { ExplorationGraph } from '../shared/exploration';
 import type { IdentityHistory, IdentitySearch } from '../shared/identities';
 // 共享对象、结论、关系与跨机构身份(frontend-spec 7;data-model §3.4),从 v1 src/server/operations/
 // (shared、queries、identity-index、exploration、knowledge、identities)迁移。
-// v1 里关联任务(task_objects)与个人履历上的任职机构随工作台(§10)、人才库(6.9)一起迁移。
+// v1 里个人履历上的任职机构随人才库(6.9)一起迁移;关联任务见 work.ts。
 
 type Db = Pool | Client;
 const admin = (user: User) => user.role === 'admin';
@@ -41,12 +41,12 @@ const urlInput = text(2000).refine(
 );
 export const visibilityInput = z.enum(['team', 'admin']);
 const dates = { validFrom: dateInput.default(''), validUntil: dateInput.default('') };
-const reference = {
+export const reference = {
   rawText: text(100000).default(''),
   sourceUrl: urlInput.default(''),
   sourceRecordId: text(100).default(''),
 };
-function checkAccess(access: Access, user: User) {
+export function checkAccess(access: Access, user: User) {
   if (access === 'admin' && !admin(user)) problem(403, 'Administrator access is required.');
 }
 function checkDates(from: string, until: string) {
@@ -54,7 +54,7 @@ function checkDates(from: string, until: string) {
     problem(422, 'The end date must not be before the start date.');
 }
 /** 引用本机构的一条记录:看不到 → 403;admin 记录不能支撑 team 对象 → 422。 */
-async function checkReference(
+export async function checkReference(
   client: Client,
   recordId: string,
   organizationId: string,
@@ -75,7 +75,7 @@ async function checkReference(
   return record;
 }
 /** 原文优先存为新证据;否则沿用所选记录的原文;两者都没有 → 422。 */
-async function evidence(
+export async function evidence(
   client: Client,
   store: EvidenceStore,
   organizationId: string,
@@ -333,7 +333,7 @@ export async function exploration(
   organization: { id: string; name: string },
   user: User,
   today: string,
-): Promise<ExplorationGraph> {
+): Promise<Omit<ExplorationGraph, 'tasks'>> {
   const graph = await knowledgeGraph(pool, user, today, organization.id);
   const contextRecords = await records(pool, organization.id, '', user.role);
   const known = new Set(contextRecords.map((r) => r.id));
