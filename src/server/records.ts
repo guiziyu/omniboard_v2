@@ -10,7 +10,7 @@ import {
   movementDateSchema,
   validateMovementDate,
 } from '../shared/movement-date';
-import { pendingModules, tabs, tabsFor } from '../shared/registry';
+import { tabs, tabsFor } from '../shared/registry';
 import type {
   ModuleData,
   ModuleRecord,
@@ -234,8 +234,6 @@ export async function saveRecord(
 ): Promise<{ id: string; revision: number; created: boolean }> {
   if (!tabsFor(org.tags).some((t) => t.id === tabId) || tabId === 'stats')
     problem(422, 'This module does not accept manual records.');
-  if (pendingModules.includes(tabId))
-    problem(422, 'This module is being moved to the new version and does not accept records yet.');
   const chart = tabId === 'org_chart';
   const structured =
     tabId === 'people_movements'

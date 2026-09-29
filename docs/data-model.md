@@ -112,6 +112,9 @@
 - 由个人履历生成的人员变动(`structured.personProfileId` 等键,frontend-spec 6.14)不经记录接口导入,
   随 §3.4 人员档案一起迁移。
 
+实现补充(路线图,frontend-spec 10.11、10.12):里程碑就是 `tab_id = 'roadmap'` 的 `module_records`,不新增表;
+执行任务以 `work_tasks.source_record_id` 关联,状态读取时取任务本身,里程碑不存进度,也不随任务完成而改变。
+
 | v2 表 | 变化 | 迁移 |
 |---|---|---|
 | `module_records` | `structured_json` → `structured jsonb`;`event_date` 按业务日期约定 | ✓(保留 `revision`) |

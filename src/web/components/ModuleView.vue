@@ -1,6 +1,5 @@
 <script setup lang="ts">
 // 一个模块 tab 的内容(frontend-spec 4.3、4.4、5.1、5.2、5.4),从 v1 ModuleView.vue 迁移。
-// 尚未迁移的专用面板(registry.ts pendingModules)显示「正在迁移」。
 import { computed, nextTick, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { api, atLeast, session } from '../api';
@@ -16,7 +15,6 @@ import {
   summaryFields as decisionFields,
 } from '../../shared/record-summary';
 import { contactHref, knowledgeFields } from '../../shared/knowledge';
-import { pendingModules } from '../../shared/registry';
 import OnboardingProgress from './OnboardingProgress.vue';
 import IntegrationPlans from './IntegrationPlans.vue';
 import WorkBoard from './WorkBoard.vue';
@@ -39,13 +37,13 @@ import KnowledgePanel from './KnowledgePanel.vue';
 import OrgChart from './OrgChart.vue';
 import OrganizationOverview from './OrganizationOverview.vue';
 import PeopleMovements from './PeopleMovements.vue';
+import RoadmapPanel from './RoadmapPanel.vue';
 import RecordEditor from './RecordEditor.vue';
 import RecordHistory from './RecordHistory.vue';
 const props = defineProps<{ organization: Organization; data: ModuleData; tab: TabDefinition }>();
 const emit = defineEmits<{ refresh: [] }>();
 const route = useRoute();
 const canEdit = computed(() => !!session.user && atLeast(session.user.role, 'editor'));
-const pending = computed(() => pendingModules.includes(props.tab.id));
 const records = computed(() => props.data.records ?? []);
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -53,8 +51,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 const editing = ref<ModuleRecord>();
 const showEditor = ref(false);
 const historyFor = ref<string>();
-function edit(record?: ModuleRecord) {
+const newPlanType = ref('');
+function edit(record?: ModuleRecord, planType = '') {
   editing.value = record;
+  newPlanType.value = planType;
   showEditor.value = true;
 }
 
@@ -233,13 +233,11 @@ const showList = computed(
       <h3>{{ tr('Restricted records') }}</h3>
       <p>{{ tr('Your account does not have access to these records.') }}</p>
     </div>
-    <div v-else-if="pending" class="empty">
-      <h3>{{ tr(tab.title) }}</h3>
-      <p>{{ tr(tab.description) }}</p>
-      <p class="hint">This module is being moved to the new version.</p>
-    </div>
     <template v-else>
-      <div v-if="tab.kind !== 'overview' && tab.id !== 'relationships'" class="module-heading">
+      <div
+        v-if="tab.kind !== 'overview' && !['relationships', 'roadmap'].includes(tab.id)"
+        class="module-heading"
+      >
         <div>
           <h3>{{ tr(tab.title) }}</h3>
           <p class="hint">{{ tr(tab.description) }}</p>
@@ -268,6 +266,13 @@ const showList = computed(
         @refresh="emit('refresh')"
       />
       <KnowledgePanel v-if="tab.id === 'relationships'" :organization-id="organization.id" />
+      <RoadmapPanel
+        v-if="tab.id === 'roadmap'"
+        :organization="organization"
+        :records="records"
+        @edit="edit"
+        @history="historyFor = $event"
+      />
       <template v-if="tab.id === 'onboarding'">
         <OnboardingProgress
           v-if="records.length"
@@ -301,7 +306,7 @@ const showList = computed(
         v-if="
           data.status === 'empty' &&
           ['records', 'timeline'].includes(tab.kind) &&
-          !['relationships', 'onboarding'].includes(tab.id)
+          !['relationships', 'onboarding', 'roadmap'].includes(tab.id)
         "
         class="empty"
       >
@@ -576,6 +581,7 @@ const showList = computed(
       :tab="tab"
       :record="editing"
       :records="records"
+      :plan-type="newPlanType"
       @close="showEditor = false"
       @saved="
         showEditor = false;

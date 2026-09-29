@@ -223,11 +223,6 @@ test('records: states, revisions, references, visibility, history, profile', asy
       422,
       'module not configured for the tag',
     );
-    assert.equal(
-      (await post(base, 'editor', `/api/organizations/${org}/tabs/roadmap/records`)).statusCode,
-      422,
-      'module not moved to v2 yet',
-    );
     const nda = { ...contact, structured: { ...contact.structured, sensitivity: 'NDA' } };
     assert.equal((await post(nda, 'admin')).statusCode, 422);
     assert.equal((await post({ ...nda, visibility: 'admin' })).statusCode, 403);

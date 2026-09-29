@@ -648,6 +648,95 @@ test('workspace access pages', async ({ page }) => {
     await nav.getByRole('link', { name: 'Organizations' }).click();
   });
 
+  await test.step('roadmap: empty lanes, milestones, filters, follow-up task, edit', async () => {
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Roadmap', exact: true }).click();
+    await expect(page).toHaveURL(/\/roadmap$/);
+    const roadmap = page.getByRole('region', { name: 'Roadmap' });
+    const lanes = roadmap.locator('.roadmap-empty-lanes section');
+    await expect(lanes).toHaveCount(2);
+
+    // 空态分栏的按钮预选计划类型(10.11);窗口已过的里程碑提示待更新。
+    await lanes
+      .filter({ hasText: 'Our collaboration' })
+      .getByRole('button', { name: 'Add milestone' })
+      .click();
+    const editor = page.getByRole('dialog', { name: 'Add milestone' });
+    await expect(editor.getByLabel('Plan belongs to')).toHaveValue('collaboration');
+    await expect(editor.getByLabel('Evidence review')).toHaveValue('unverified');
+    await editor.getByLabel('Title').fill('Acme market-making agreement');
+    await editor.getByLabel('Target window').fill('2025-Q4');
+    await editor.getByLabel('Expected outcome').fill('Signed market-making terms.');
+    await editor.getByLabel('Notes').fill('Agreed in the quarterly call.');
+    await editor.getByLabel('Original text').fill('Call notes: aim to sign terms in Q4 2025.');
+    await editor.getByRole('button', { name: 'Save record' }).click();
+    await expect(editor).toBeHidden();
+    const rows = roadmap.locator('.roadmap-row');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText('2025 · Q4');
+    await expect(rows.first()).toContainText('Target window passed');
+
+    // 目标时间必须是真实日期(10.12)。
+    await roadmap.getByRole('button', { name: 'Add milestone' }).click();
+    await expect(editor.getByLabel('Plan belongs to')).toHaveValue('organization');
+    await editor.getByLabel('Title').fill('Acme derivatives launch');
+    await editor.getByLabel('Target window').fill('2027-Q5');
+    await editor.getByLabel('Expected outcome').fill('Perpetuals open to institutions.');
+    await editor.getByLabel('Notes').fill('Announced on the Acme blog.');
+    await editor.getByLabel('Original text').fill('Blog: derivatives launch planned for Q2 2027.');
+    await editor.getByRole('button', { name: 'Save record' }).click();
+    await expect(editor).toContainText(
+      'Enter a valid year, quarter, month or date for the target window.',
+    );
+    await editor.getByLabel('Target window').fill('2027-Q2');
+    await editor.getByRole('button', { name: 'Save record' }).click();
+    await expect(editor).toBeHidden();
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText('Acme market-making agreement');
+    await expect(roadmap.locator('.roadmap-summary')).toContainText('2 Open milestones');
+
+    // 过滤只在当前页面(10.11)。
+    await roadmap.getByRole('button', { name: 'Organization plans' }).click();
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText('2027 · Q2');
+    await roadmap.getByLabel('Milestone status').selectOption('delivered');
+    await expect(roadmap).toContainText('No milestones match these filters.');
+    await roadmap.getByLabel('Milestone status').selectOption('');
+    await roadmap.getByRole('button', { name: 'All plans' }).click();
+    await expect(rows).toHaveCount(2);
+
+    // 跟进任务以 sourceRecordId 关联,展开后实时显示任务状态。
+    const agreement = rows.filter({ hasText: 'Acme market-making agreement' });
+    await agreement.locator('summary').click();
+    await agreement.getByRole('link', { name: 'Create follow-up task' }).click();
+    const plan = page.getByRole('dialog', { name: 'New information → New task' });
+    await expect(plan.getByLabel('Source record')).not.toHaveValue('');
+    await plan.getByLabel('Task title').fill('Send the draft terms to Acme');
+    await plan.getByRole('button', { name: 'Save task' }).click();
+    await expect(plan).toBeHidden();
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Roadmap', exact: true }).click();
+    await expect(agreement).toContainText('1 linked tasks');
+    await agreement.locator('summary').click();
+    await expect(
+      agreement.getByRole('link', { name: /Send the draft terms to Acme/ }),
+    ).toBeVisible();
+
+    // 编辑进度不改证据复核(10.12)。
+    await agreement.getByRole('button', { name: 'Edit milestone' }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit milestone' });
+    await edit.getByLabel('Milestone status').selectOption('in_progress');
+    await edit.getByRole('button', { name: 'Save record' }).click();
+    await expect(edit).toBeHidden();
+    await expect(agreement.locator('.roadmap-badge')).toHaveText('In progress');
+    await expect(agreement).toContainText('Target window passed');
+    await agreement.locator('summary').click();
+    await expect(agreement).toContainText('Needs review');
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

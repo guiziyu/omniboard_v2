@@ -24,6 +24,8 @@ const props = defineProps<{
   record?: ModuleRecord;
   // 同一 tab 的记录:组织架构图用来列出可选上级。
   records?: ModuleRecord[];
+  // 路线图空态的分栏按钮预选计划类型(10.11)。
+  planType?: string;
 }>();
 const chart = props.tab.kind === 'chart';
 const timeline = props.tab.kind === 'timeline';
@@ -45,6 +47,7 @@ const form = reactive({
           reviewedOn: new Date().toISOString().slice(0, 10),
         }
       : {}),
+    ...(props.planType ? { planType: props.planType } : {}),
     ...props.record?.structured,
     ...(timeline
       ? {
@@ -103,16 +106,21 @@ const removeGuard = router.beforeEach(
     ),
 );
 onUnmounted(removeGuard);
+const roadmap = props.tab.id === 'roadmap';
 const title = computed(() =>
-  chart
+  roadmap
     ? props.record
-      ? tr('Edit person')
-      : tr('Add person')
-    : comments && !props.record
-      ? tr('Add discussion')
-      : props.record
-        ? tr('Edit record')
-        : tr('Add organization knowledge'),
+      ? tr('Edit milestone')
+      : tr('Add milestone')
+    : chart
+      ? props.record
+        ? tr('Edit person')
+        : tr('Add person')
+      : comments && !props.record
+        ? tr('Add discussion')
+        : props.record
+          ? tr('Edit record')
+          : tr('Add organization knowledge'),
 );
 // ---- 组织架构图(6.4):上级只能是非后代、可见性与表单一致的人员 ----
 const invalidParents = computed(() =>
@@ -406,7 +414,7 @@ async function save() {
           />
         </label>
         <label>
-          {{ tr('Team review and follow-up') }}
+          {{ roadmap ? tr('Evidence review') : tr('Team review and follow-up') }}
           <select v-model="form.status">
             <option value="unverified">{{ tr('Needs review') }}</option>
             <option value="confirmed">{{ tr('Marked confirmed') }}</option>
