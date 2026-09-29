@@ -31,6 +31,29 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
 
 输出一次性激活链接(72 小时)。阶段一经 SSH 隧道访问:`ssh -L 4318:127.0.0.1:4318 Neo-Apnt1a`。
 
+## 部署
+
+`scripts/deploy.sh <ref> [--migrate]`(proposal §3),Neo 与正式机相同:
+
+1. 从 GitHub 取 `<ref>`,在 `~/omniboard-app/releases/<时间>-<提交>/` 里 `npm ci` 与 `npm run build`
+   (输出写 `~/omniboard-app/deploy.log`)。
+2. 带 `--migrate` 时先用新代码执行 `npm run migrate`(需要 `.env` 里的 `QUANT_PG_MIGRATOR_URL`)。
+3. 用新代码跑 `npm run selfcheck`:配置、前端构建、PG 连通、schema 版本与代码一致、应用角色拥有
+   `db/owner/001` 授的权限且读不到密钥列。任何一项不通就不切换,新目录删除。
+4. 把 `~/omniboard-app/current` 切到新目录,`systemctl --user restart omniboard`,等 `/api/health` 报告
+   `status: ok` 且 `revision` 是新提交(默认 60 秒)。等不到就切回上一个版本;带 `--migrate` 且已迁移时不回滚
+   (迁移只前进,旧代码遇到新 schema 会拒绝启动),只报错。
+5. 只保留最近 5 个版本(当前与上一个始终保留)。
+
+机器前置条件(owner 做一次):
+
+- Node 24、git、curl;Neo 上 Node 24 在 `~/.local/opt/node24/bin`,写进单元的 `PATH`。
+- `~/omniboard-app/shared/.env`:按 `.env.example` 填写,`chmod 600`。
+- systemd 用户单元:`cp scripts/omniboard.service ~/.config/systemd/user/`,`systemctl --user daemon-reload`,
+  `systemctl --user enable omniboard`;`sudo loginctl enable-linger $USER`,否则退出 SSH 后服务随会话停止。
+- 可选环境变量:`OMNIBOARD_HOME`、`OMNIBOARD_REPO`、`OMNIBOARD_SERVICE`、`OMNIBOARD_KEEP_RELEASES`、
+  `OMNIBOARD_HEALTH_TIMEOUT`。
+
 ## 移植进度
 
 按 data-model 的章节从 v1 移植,每块带上对应的 v1 测试和浏览器用例。

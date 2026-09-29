@@ -1,0 +1,22 @@
+# Omniboard v2 的 systemd 用户单元(proposal §3)。安装见 README「部署」:
+#   cp scripts/omniboard.service ~/.config/systemd/user/ && systemctl --user daemon-reload
+#   systemctl --user enable omniboard && sudo loginctl enable-linger $USER
+# deploy.sh 切换 ~/omniboard-app/current 后执行 systemctl --user restart omniboard。
+[Unit]
+Description=Omniboard v2
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/omniboard-app/current
+# Node 24 不在系统 PATH 时(如 Neo)改成它的实际目录。
+Environment=PATH=%h/.local/opt/node24/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+ExecStart=%h/omniboard-app/current/node_modules/.bin/tsx src/server/index.ts
+Restart=on-failure
+RestartSec=5
+# 服务端收到 SIGTERM 后关闭 HTTP 与连接池,释放单实例锁。
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

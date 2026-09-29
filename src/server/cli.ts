@@ -1,8 +1,10 @@
+import { existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { appConfig, loadEnv, required } from './config';
 import { openPool } from './db';
 import { bootstrapAdmin, inviteLink } from './auth';
-import { expectedVersion, migrate, schemaVersion } from './migrate';
+import { migrate } from './migrate';
+import { selfcheck } from './selfcheck';
 const [command, ...rest] = process.argv.slice(2);
 async function main() {
   switch (command) {
@@ -13,14 +15,20 @@ async function main() {
       return;
     }
     case 'selfcheck': {
-      // deploy.sh 切换前调用:PG 连通、schema 版本一致(证据原件也在 PG 里)。
+      // deploy.sh 切换前用新版本调用(proposal §3):配置、前端构建、PG 连通、schema 版本、应用角色的权限。
       const config = appConfig();
+      if (!existsSync('dist/index.html'))
+        throw new Error('dist/index.html is missing. Run npm run build.');
       const pool = openPool(config.pgUrl, 1);
       try {
-        const version = await schemaVersion(pool);
-        if (version !== expectedVersion())
-          throw new Error(`Schema version ${version}, expected ${expectedVersion()}.`);
-        console.log(`OK: PostgreSQL reachable, schema version ${version}.`);
+        const result = await selfcheck(pool);
+        if (result.problems.length)
+          throw new Error(
+            ['Self-check failed:', ...result.problems.map((p) => `- ${p}`)].join('\n'),
+          );
+        console.log(
+          `OK: PostgreSQL reachable, schema version ${result.schemaVersion}, grants in place.`,
+        );
       } finally {
         await pool.end();
       }

@@ -71,7 +71,8 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 - 安全组与 Rosseta `pg_hba` 放行到生产 PG 10.0.3.240:5433;
 - 对公网提供服务时:域名、Caddy、443 入站。
 
-`deploy.sh` 启动后自检 PG 连通和 `omniboard` schema 版本,任何一项不通就不切换。
+`deploy.sh` 用新代码自检 PG 连通、`omniboard` schema 版本与应用角色的权限(含密钥列不可读),任何一项不通就不切换;
+切换后等 `/api/health` 报告新提交,起不来就切回上一个版本(`scripts/deploy.sh`,步骤见 README「部署」)。
 - **开发**:两个仓库都在 Neo 上开发,改契约时一个会话同批改两边。测试用测试 PG(5432),
   不连生产库;浏览器测试用 `nice -n 19` 跑,不和 HFT 抢 CPU。
 - **agent 取上下文**:Neo 上的 agent 可以读 `omniboard` schema(owner 已允许)。quant 的 agent

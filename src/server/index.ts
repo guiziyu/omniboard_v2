@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { appConfig } from './config';
 import { openPool } from './db';
 import { buildApp } from './app';
@@ -30,6 +31,7 @@ const app = await buildApp({
   origin: config.origin,
   logger: true,
   development: config.development,
+  revision: existsSync('REVISION') ? readFileSync('REVISION', 'utf8').trim() : undefined,
 });
 // 每日采集(9.7):开关在数据来源页,默认关闭。
 const collectTimer = setInterval(

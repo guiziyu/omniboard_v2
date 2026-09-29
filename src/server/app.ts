@@ -65,6 +65,8 @@ export type AppOptions = {
   development?: boolean;
   /** 排行页抓取(frontend-spec 9.7);测试用本地样本页代替。 */
   sourceFetcher?: Fetcher;
+  /** 部署的 git 提交(deploy.sh 写入 REVISION);/api/health 返回它,部署脚本据此确认新版本已启动。 */
+  revision?: string;
 };
 const COOKIE = 'omniboard_session';
 // 不需要会话的接口。
@@ -171,6 +173,7 @@ export async function buildApp(options: AppOptions) {
       status: version === expectedVersion() ? 'ok' : 'schema_mismatch',
       schemaVersion: version,
       expectedVersion: expectedVersion(),
+      revision: options.revision ?? null,
     };
   });
   app.get('/api/session', async (request) => ({
