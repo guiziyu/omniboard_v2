@@ -389,6 +389,7 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 | 字段 | 规则 |
 |---|---|
 | `channel`、`portfolio_group`、`prediction_group` | 非空,前后无空白 |
+| `prediction_group` | `BaseAsset_<asset>` 或 `Beta_<name>`(quant `PredictionGroup::from_str`)。库里不检查,写错时 HFT 启动加载配置失败,v2 在前端与服务端检查 |
 | `max_active_groups` | 整数 > 0 |
 | `max_portfolio_gross_exposure_usd` | 有限且 > 0 |
 | `max_portfolio_abs_net_exposure_usd` | 有限、> 0、≤ gross |
@@ -396,8 +397,12 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 | `max_gross_exposure_usd`(组) | 有限且 > 0 |
 | `max_abs_net_exposure_usd`(组) | > 0 且 ≤ 组 gross |
 
+- `max_portfolio_gross_exposure_usd`、`max_portfolio_abs_net_exposure_usd` 虽叫 portfolio,quant 按每个运行中的组
+  使用(组合合计 = 每组上限 × 运行组数);没有覆盖行的组用这两个值。
 - 保存语义与 `sync_hft_config --apply` 相同:同一事务里 upsert `hft_config` 那一行、删掉该 channel 的全部
-  `hft_group_limit` 再按表单插入,`update_at = now()`。
+  `hft_group_limit` 再按表单插入,`update_at = now()`。没有改动时不写。
+- 并发:保存时带上打开时的 `update_at`(微秒精度文本),与库里不同返回 409;行在事务里 `FOR UPDATE`。
+- 审计:`hft_config.create` / `hft_config.update`,`target_key` = channel,before / after 为整份设置(含组覆盖)。
 - 不删 `hft_config` 行。
 - YAML(`hft-lp-gavin-cross.yaml`)目前写明是这些值的真值,v2 上线后它和库会分叉(待裁决 D2)。
 

@@ -46,7 +46,7 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
   Compliance 规则矩阵(2.15、4.5、4.6、5.8);情报收件箱、情报详情、关注机构与活动历史(8.1–8.4),
   任务详情的「Open source information」改为打开情报详情;数据来源页、CMC / CoinGecko 排行页采集、每日采集、
   来源身份映射与机构选择器的「只查交易所」(9.4–9.7、2.15);证据原件存 PG(data-model §1);交易账户、
-  key 录入 / 轮换 / 停用与 Onboarding 记录联动(12.7)。
+  key 录入 / 轮换 / 停用与 Onboarding 记录联动(12.7);HFT 配置(12.8)。
 - 所有模块标签页都已可用。
 - 数据来源:
   - 导入顺序:机构 → 别名 → `POST /api/import/source-links`(保留 v1 的来源档案与人工映射),然后才做第一次采集;
@@ -57,7 +57,7 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
     frontend-spec「已排除」不移植。
 - `capital_scenarios`(data-model §3.3)在 v1 只有接口、没有页面,前端规格也没有对应界面,暂不移植;活动历史里
   v1 导入的 scenario 事件照常跳到 Capital Optimization 标签页。
-- 其他待办:HFT 配置与重启(12.8、12.9)、v2 新页面的中文与韩文译文。
+- 其他待办:HFT 重启(12.9,依赖 quant 的 `hft-launcher`)、v2 新页面的中文与韩文译文。
 - TODO(低优先级):影响实盘的操作当场重输验证码(frontend-spec 12.4、proposal §4)。目前只要求 trader 的登录会话;
   登录仍强制 TOTP,重新生成恢复码仍要输验证码。
 - TODO(低优先级):通知邮件(frontend-spec 12.11、data-model D5)。发送通道未定,已写好的 outbox 先移除;

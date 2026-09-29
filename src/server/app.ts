@@ -53,6 +53,7 @@ import { registerIntegrationRoutes } from './integration-routes';
 import { registerIntelligenceRoutes } from './intelligence';
 import { registerSourceRoutes } from './source-routes';
 import { registerAccountRoutes } from './accounts';
+import { registerHftRoutes } from './hft';
 import { waitForCollections, type Fetcher } from './collect';
 export type AppOptions = {
   pool: Pool;
@@ -388,6 +389,7 @@ export async function buildApp(options: AppOptions) {
   registerIntelligenceRoutes(app, deps);
   registerSourceRoutes(app, { ...deps, fetcher: options.sourceFetcher });
   registerAccountRoutes(app, ctx);
+  registerHftRoutes(app, ctx);
   // 关闭前等后台采集写完运行记录。
   app.addHook('onClose', async () => waitForCollections());
 

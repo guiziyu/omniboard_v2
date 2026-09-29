@@ -3568,3 +3568,45 @@ a.context-link {
     width: 100%;
   }
 }
+/* HFT 配置(frontend-spec 12.8) */
+.hft-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.hft-card {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+}
+.hft-card h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.hft-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.hft-card dt {
+  color: var(--muted);
+}
+.hft-card dd {
+  margin: 0;
+}
+.hft-form {
+  max-width: 720px;
+}
+.hft-limits input {
+  width: 100%;
+}
+ul.plain {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

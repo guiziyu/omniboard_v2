@@ -1256,6 +1256,86 @@ test('workspace access pages', async ({ page }) => {
     await expect(page.getByRole('row', { name: /binance-lp-01/ })).toContainText('Terminated');
   });
 
+  await test.step('HFT config: add channel, review changes with overrides, stale save', async () => {
+    await page.getByRole('link', { name: 'HFT config' }).click();
+    await expect(page.getByRole('heading', { name: 'HFT config', level: 1 })).toBeVisible();
+    await expect(page.getByText('No channels yet.')).toBeVisible();
+    await page.getByRole('button', { name: 'Add channel' }).click();
+    const add = page.getByRole('dialog', { name: 'Add channel' });
+    await add.getByLabel('Channel').fill('browser');
+    await add.getByLabel('Portfolio group').fill('lp-browser');
+    await add.getByLabel('Max active groups').fill('30');
+    await add.getByLabel('Max gross exposure per group (USD)').fill('500');
+    await add.getByLabel('Max |net| exposure per group (USD)').fill('600');
+    await expect(
+      add.getByText('Must be greater than 0 and not above the gross limit.'),
+    ).toBeVisible();
+    await add.getByLabel('Max |net| exposure per group (USD)').fill('200.125');
+    await add.getByLabel('Max wallet gross / assets ratio').fill('0.8');
+    await add.getByRole('button', { name: 'Add channel' }).click();
+    await expect(page).toHaveURL(/channel=browser/);
+    await expect(page.getByRole('heading', { name: 'browser', level: 1 })).toBeVisible();
+    await expect(page.getByText('Changes take effect after HFT restarts.')).toBeVisible();
+    // 完整精度,不做缩写。
+    await expect(page.getByLabel('Max |net| exposure per group (USD)')).toHaveValue('200.125');
+
+    // 改一个字段、加一条组覆盖;对照页列出两处改动,返回后表单内容还在。
+    await page.getByLabel('Max active groups').fill('20');
+    await page.getByRole('button', { name: 'Add group override' }).click();
+    await page.getByLabel('Prediction group 1').fill('BTC');
+    await page.getByLabel('Max gross exposure 1').fill('3000');
+    await page.getByLabel('Max net exposure 1').fill('200');
+    await expect(page.getByText('Use BaseAsset_<asset> or Beta_<name>.')).toBeVisible();
+    await page.getByLabel('Prediction group 1').fill('BaseAsset_BTC');
+    await page.getByRole('button', { name: 'Review changes' }).click();
+    const review = page.getByRole('dialog', { name: 'Review changes' });
+    await expect(review.getByRole('row', { name: 'Max active groups 30 20' })).toBeVisible();
+    await expect(
+      review.getByRole('row', { name: 'Group BaseAsset_BTC — gross 3000 · |net| 200' }),
+    ).toBeVisible();
+    await review.getByRole('button', { name: 'Back' }).click();
+    await expect(page.getByLabel('Max active groups')).toHaveValue('20');
+    await page.getByRole('button', { name: 'Review changes' }).click();
+    await review.getByRole('button', { name: 'Save changes' }).click();
+    await expect(review).toBeHidden();
+    await expect(page.getByRole('cell', { name: 'Config saved' })).toBeVisible();
+    await expect(page.getByText('Max active groups: 30 → 20')).toBeVisible();
+
+    // 别人在此期间保存过:拒绝覆盖,表单内容保留,Reload 后看到最新值。
+    const latest = await (await page.request.get('/api/hft/browser')).json();
+    const other = await page.request.put('/api/hft/browser', {
+      headers: { origin: 'http://127.0.0.1:4319' },
+      data: {
+        base: latest.updateAt,
+        settings: {
+          ...latest,
+          channel: undefined,
+          updateAt: undefined,
+          knownGroups: undefined,
+          audit: undefined,
+          maxActiveGroups: 25,
+        },
+      },
+    });
+    expect(other.status()).toBe(200);
+    await page.getByRole('button', { name: 'Remove' }).click();
+    await page.getByRole('button', { name: 'Review changes' }).click();
+    await expect(review.getByRole('row', { name: /Group BaseAsset_BTC/ })).toBeVisible();
+    await review.getByRole('button', { name: 'Save changes' }).click();
+    await expect(
+      page.getByText('This channel changed since you opened it. Reload to see the latest values.'),
+    ).toBeVisible();
+    await expect(page.getByLabel('Prediction group 1')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Reload' }).click();
+    await expect(page.getByLabel('Max active groups')).toHaveValue('25');
+    await expect(page.getByLabel('Prediction group 1')).toHaveValue('BaseAsset_BTC');
+
+    await page.getByRole('link', { name: '← All channels' }).click();
+    const card = page.locator('.hft-card').filter({ hasText: 'lp-browser' });
+    await expect(card).toContainText('lp-browser');
+    await expect(card).toContainText('gross 500 · |net| 200.125 · wallet ratio 0.8');
+  });
+
   await test.step('audit log: events, expand, filters in the URL', async () => {
     await page.getByRole('link', { name: 'Audit log' }).click();
     const roleRow = page.getByRole('row', { name: /Role changed/ });

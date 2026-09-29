@@ -2562,19 +2562,25 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 
 ### 12.8 HFT 配置(`/w/internal/hft`)
 - 入口:侧栏「Trading」下的「HFT config」,trader 与 admin 可见,其他角色 404。
-- **列表**:每个 channel 一张卡片,显示 portfolio group、max active groups、三个组合级上限、组覆盖条数、`update_at`。
+- **列表**:每个 channel 一张卡片,显示 portfolio group、max active groups、三个每组上限(gross、|net|、wallet
+  ratio)、组覆盖条数、`update_at`。
 - **Channel 页**(`?channel=<name>`):
   - 顶部提示:「Changes take effect after HFT restarts. The running process keeps the limits it started with.」
     第二批有 launcher 后,若 `update_at` 晚于当前进程启动时间,显示醒目的「Changed · restart required」(D4)。
-  - 组合级字段:Portfolio group、Max active groups、Max portfolio gross exposure (USD)、Max portfolio |net| exposure (USD)、
-    Max wallet gross / assets ratio。每个字段旁有约束说明(data-model 5.2)。
+  - 组合级字段:Portfolio group、Max active groups、Max gross exposure per group (USD)、
+    Max |net| exposure per group (USD)、Max wallet gross / assets ratio。每个字段旁有约束说明(data-model 5.2)。
+    两个 exposure 字段对应 `max_portfolio_*` 列,但 quant 按**每个运行中的组**使用、不按组数平分
+    (`business-hft` `HftDispatchPolicy`),所以标签写「per group」,不写「portfolio」。
   - 组覆盖表:Prediction group、Max gross exposure (USD)、Max |net| exposure (USD);可增、改、删行;Prediction group 输入框
-    提示已有组名,也可以新填。没有覆盖的组使用 channel 默认值,表下注明这一点。
-  - 保存:显示改前 / 改后对照(含组覆盖的新增、删除、修改),→ 12.4 → 一个事务写入(data-model 5.2)。
+    提示已有组名,也可以新填,须为 `BaseAsset_<asset>` 或 `Beta_<name>`。没有覆盖的组使用 channel 的每组上限,
+    表下注明这一点。
+  - 保存:显示改前 / 改后对照(含组覆盖的新增、删除、修改),→ 12.4(暂缓,TODO)→ 一个事务写入(data-model 5.2)。
+    从对照页返回时表单内容保留;没有改动时提示「Nothing has changed.」,不写库、`update_at` 不变。
   - 数值按完整精度显示与输入,不做紧凑缩写。
-- 「Add channel」:填写全部组合级字段,新建一行。不提供删除 channel。
-- 409:保存时发现 `update_at` 与打开时不同,提示「This channel changed since you opened it. Reload to see the latest
-  values.」,不覆盖。
+  - 下方显示这个 channel 的改动历史(v2 审计)。
+- 「Add channel」:填写 channel 名和全部组合级字段(可带组覆盖),新建一行。不提供删除、改名 channel。
+- 409:保存时发现 `update_at` 与打开时不同(按微秒比较),提示「This channel changed since you opened it. Reload to see
+  the latest values.」,不覆盖;表单内容保留,旁边给「Reload」按钮。
 
 ### 12.9 HFT 重启(第二批,依赖 `hft-launcher`)
 - 位置:Channel 页顶部的「Process」卡片。

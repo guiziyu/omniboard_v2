@@ -73,6 +73,11 @@ const router = createRouter({
       meta: { title: 'Accounts' },
     },
     {
+      path: '/w/internal/hft',
+      component: () => import('./views/HftView.vue'),
+      meta: { title: 'HFT config' },
+    },
+    {
       path: '/w/internal/sources',
       component: () => import('./views/SourcesView.vue'),
       meta: { title: 'Data sources' },

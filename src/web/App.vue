@@ -89,6 +89,7 @@ async function logout() {
         <template v-if="isTrader">
           <p class="group">Trading</p>
           <RouterLink to="/w/internal/accounts">Accounts</RouterLink>
+          <RouterLink to="/w/internal/hft">HFT config</RouterLink>
         </template>
         <!-- Data sources 所有角色可见,管理操作在页内限 admin(frontend-spec 2.3、9.5)。 -->
         <p class="group">Administration</p>

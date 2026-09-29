@@ -1,10 +1,16 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { atLeast, problem, type AuthContext } from './auth';
+import { problem, type AuthContext } from './auth';
 import { audit, type AuditAction } from './audit';
-import { requireInteractive, requireRole } from './access';
-import { tx, type Client, type Pool } from './db';
+import {
+  quantWrite,
+  requireInteractive,
+  requireLiveWrite,
+  requireRole,
+  requireTrader,
+} from './access';
+import type { Client, Pool } from './db';
 import { recordInput, saveRecordWith } from './records';
 import { venueKeyOf } from './connector-requests';
 import type { Tag } from '../shared/types';
@@ -70,27 +76,6 @@ function toAccount(row: Row): Account {
     status: accountStatus(tags),
     lastChange: row.lastChange?.toISOString() ?? null,
   };
-}
-
-/** 页面与读接口:trader 与 admin;其他角色看不到这一页(12.7 返回 404)。 */
-function requireTrader(request: FastifyRequest) {
-  if (!atLeast(request.user.role, 'trader')) problem(404, 'Not found.');
-}
-/** 影响实盘的写操作(12.1):trader 角色,且必须是登录会话,令牌不行。 */
-function requireLiveWrite(request: FastifyRequest) {
-  requireRole(request, 'trader');
-  requireInteractive(request);
-}
-/** DB 约束拒绝时带上约束名(12.7),表单内容由前端保留。 */
-async function write<T>(pool: Pool, fn: (client: Client) => Promise<T>): Promise<T> {
-  try {
-    return await tx(pool, fn);
-  } catch (error) {
-    const pg = error as { code?: string; constraint?: string };
-    if (pg.code === '23514' || pg.code === '23502')
-      problem(422, `The database rejected this change: ${pg.constraint ?? 'not null'}`);
-    throw error;
-  }
 }
 
 // ---- Onboarding 记录(proposal §5):录入 key 时同一事务标为 granted 并填 accountRef ----
@@ -339,7 +324,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
     const authId = authIdOf(input.exchange, input.accountName);
     const tags = tagsOf(input.settings);
     const whitelist = unique(input.ipWhitelist);
-    await write(pool, async (client) => {
+    await quantWrite(pool, async (client) => {
       const inserted = await client.query(
         `INSERT INTO management.authentication
            (auth_id, exchange, account_name, account_tags, ip_whitelist, owner, api_key, api_secret, api_pass)
@@ -403,7 +388,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
       .strict()
       .parse(request.body);
     checkSettings(input.settings, input.ipWhitelist);
-    await write(pool, async (client) => {
+    await quantWrite(pool, async (client) => {
       const current = await lockAccount(client, authId);
       if (
         current.accountTags !== input.base.accountTags ||
@@ -458,7 +443,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
       .object({ apiKey: secret, apiSecret: secret, apiPass: z.string().trim().max(10000) })
       .strict()
       .parse(request.body);
-    await write(pool, async (client) => {
+    await quantWrite(pool, async (client) => {
       await lockAccount(client, authId);
       await client.query(
         `UPDATE management.authentication SET api_key = $2, api_secret = $3, api_pass = $4
@@ -483,7 +468,7 @@ export function registerAccountRoutes(app: FastifyInstance, ctx: AuthContext) {
       .object({ accountName: z.string().max(100) })
       .strict()
       .parse(request.body);
-    await write(pool, async (client) => {
+    await quantWrite(pool, async (client) => {
       const current = await lockAccount(client, authId);
       if (input.accountName !== current.accountName)
         problem(422, 'Type the account name exactly to confirm.');
