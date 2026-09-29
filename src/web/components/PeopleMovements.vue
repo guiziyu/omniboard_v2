@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 人员变动列表(frontend-spec 6.5–6.7),从 v1 PeopleMovements.vue 迁移。
-// 由个人履历生成的变动(structured.personProfileId)随人才库(6.14)迁移,这里只保留「不可直接编辑」的规则。
+// 由个人履历生成的变动(structured.personProfileId,6.14)不能直接编辑,改为到人才库更新来源履历。
 // 「探索此人身份」统一链到 `record:<id>`,关系页再解析到承接这条记录的共享对象(7.1)。
 import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
@@ -243,12 +243,14 @@ const here = (name: string) => sameMovementOrganization(name, props.organization
             <button type="button" class="link" @click="emit('history', record.id)">
               {{ tr('History') }}
             </button>
-            <button
-              v-if="!record.structured.personProfileId && canEdit"
-              type="button"
+            <RouterLink
+              v-if="record.structured.personProfileId"
               class="link"
-              @click="emit('edit', record)"
+              :to="{ path: '/w/internal/talent', query: { person: 'record:' + record.id } }"
             >
+              {{ tr('Update source profile') }}
+            </RouterLink>
+            <button v-else-if="canEdit" type="button" class="link" @click="emit('edit', record)">
               {{ tr('Edit movement') }}
             </button>
           </span>

@@ -78,6 +78,7 @@ async function logout() {
             summary.organizations
           }}</span>
         </RouterLink>
+        <RouterLink to="/w/internal/talent">Talent directory</RouterLink>
         <RouterLink to="/w/internal/connectors">Connectors</RouterLink>
         <template v-if="isAdmin">
           <p class="group">Administration</p>

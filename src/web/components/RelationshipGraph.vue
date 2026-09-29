@@ -13,7 +13,7 @@ import type { RelationshipLayout } from '../../shared/relationship-layout';
 import { tabs } from '../../shared/registry';
 import { tr } from '../i18n';
 import Icon from './Icon.vue';
-import { profileLink as explorationDestination } from '../exploration-links';
+import { explorationDestination } from '../../shared/exploration-navigation';
 import type { GraphViewState } from '../exploration-view';
 const props = defineProps<{
   nodes: ExplorationNode[];

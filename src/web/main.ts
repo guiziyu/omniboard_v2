@@ -43,6 +43,11 @@ const router = createRouter({
       meta: { title: 'Organizations' },
     },
     {
+      path: '/w/internal/talent',
+      component: () => import('./views/TalentView.vue'),
+      meta: { title: 'Talent directory' },
+    },
+    {
       path: '/w/internal/connectors',
       component: () => import('./views/ConnectorsView.vue'),
       meta: { title: 'Connectors' },

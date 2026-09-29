@@ -8,7 +8,7 @@ import { dateTime, sourceName } from '../labels';
 import { openEvidence } from '../evidence';
 import { taskText } from '../task-text';
 import { taskStates } from '../../shared/operations';
-import { profileLink as explorationDestination } from '../exploration-links';
+import { explorationDestination } from '../../shared/exploration-navigation';
 import { useExplorationView } from '../exploration-view';
 import type { ObjectKind, KnowledgeClaim } from '../../shared/operations';
 import { explorationModel } from '../../shared/exploration-model';

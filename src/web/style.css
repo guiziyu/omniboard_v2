@@ -2883,3 +2883,245 @@ td.conn-cell {
     grid-template-columns: 1fr;
   }
 }
+
+/* 人才目录(frontend-spec 6.9–6.15) */
+.talent-review {
+  margin-top: 16px;
+}
+.talent-table td {
+  vertical-align: top;
+}
+.talent-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.talent-name span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.talent-name small,
+.talent-note {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.talent-orgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+.talent-orgs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.talent-detail {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.talent-detail h4 {
+  margin: 8px 0 0;
+}
+.talent-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.talent-section > summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.talent-section[open] > summary {
+  margin-bottom: 8px;
+}
+.talent-record-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.talent-contact,
+.person-source-card {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.talent-contact:first-of-type,
+.person-source-card:first-of-type {
+  border-top: 0;
+}
+.career-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 12px;
+}
+.career-timeline li {
+  display: grid;
+  gap: 2px;
+  position: relative;
+}
+.career-timeline li::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.career-current::before {
+  background: var(--joined) !important;
+}
+.career-tenure {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.person-capture {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 4px 0;
+}
+.person-import {
+  display: grid;
+  gap: 12px;
+}
+.person-position {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+/* 岗位目标与激励(6.16):颜色都从主题变量派生,深色模式同样可读 */
+.position-drivers {
+  margin: 16px 0;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.driver-heading,
+.driver-meta,
+.driver-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.driver-heading h4 {
+  margin: 0;
+}
+.driver-card {
+  --driver: var(--accent);
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--driver);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.driver-okr {
+  --driver: var(--amber);
+}
+.driver-incentive {
+  --driver: var(--role-change);
+}
+.driver-retired {
+  opacity: 0.7;
+}
+.driver-meta {
+  color: var(--driver);
+  font-size: 12px;
+}
+.driver-card h5 {
+  margin: 8px 0 2px;
+  font-size: 15px;
+}
+.driver-card p {
+  overflow-wrap: anywhere;
+}
+.driver-scope {
+  display: inline-block;
+  font-size: 12px;
+  background: var(--panel);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.driver-targets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.driver-target {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--amber) 10%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, var(--bg));
+  font-size: 12px;
+}
+.driver-value {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  color: var(--amber);
+}
+.driver-caveat,
+.driver-no-target {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--panel);
+}
+.driver-no-target {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+.driver-card summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+.driver-actions {
+  justify-content: flex-start;
+}
+.driver-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.driver-form h5 {
+  margin: 0;
+}
+.driver-target-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+}

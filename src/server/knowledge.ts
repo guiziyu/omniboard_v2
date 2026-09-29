@@ -19,7 +19,7 @@ import type { ExplorationGraph } from '../shared/exploration';
 import type { IdentityHistory, IdentitySearch } from '../shared/identities';
 // 共享对象、结论、关系与跨机构身份(frontend-spec 7;data-model §3.4),从 v1 src/server/operations/
 // (shared、queries、identity-index、exploration、knowledge、identities)迁移。
-// v1 里个人履历上的任职机构随人才库(6.9)一起迁移;关联任务见 work.ts。
+// 个人履历上的任职机构也算进人员对象的关联机构(v1 identity-index.ts);关联任务见 work.ts。
 
 type Db = Pool | Client;
 const admin = (user: User) => user.role === 'admin';
@@ -96,7 +96,7 @@ export async function evidence(
   problem(422, 'Add the original information or select an existing source record.');
 }
 /** 身份相关写入全部串行:合并链、重定向与记录归属的检查读到的都是提交后的状态。 */
-async function lockKnowledge(client: Client) {
+export async function lockKnowledge(client: Client) {
   await client.query("SELECT pg_advisory_xact_lock(hashtextextended('omniboard.knowledge', 0))");
 }
 
@@ -176,6 +176,22 @@ export async function identityIndex(db: Db, user: User) {
     if (!object) continue;
     if (!object.records.some((r) => r.id === record.id)) object.records.push(record);
     addOrganization(object, record.organizationId, record.organizationName);
+  }
+  // 只来自个人履历的任职也让人员出现在对应机构的关系页(frontend-spec 6.12)。
+  const careers = (
+    await db.query<{ objectId: string; id: string; name: string }>(
+      `SELECT p.object_id AS "objectId", o.id, o.name
+         FROM omniboard.person_profile_positions x
+         JOIN omniboard.person_source_profiles p ON p.id = x.profile_id
+         JOIN omniboard.organizations o ON o.id = x.data->>'organizationId'
+        WHERE p.visibility = 'team' OR $1
+        ORDER BY o.name COLLATE "C", o.id COLLATE "C"`,
+      [admin(user)],
+    )
+  ).rows;
+  for (const row of careers) {
+    const object = objects.get(canonical.get(row.objectId) || '');
+    if (object) addOrganization(object, row.id, row.name);
   }
   return { objects: [...objects.values()], canonical };
 }
@@ -763,24 +779,34 @@ export async function mergeIdentities(
 ): Promise<{ id: string }> {
   return tx(pool, async (client) => {
     await lockKnowledge(client);
-    const target = await getObject(client, user, targetId);
-    const source = await getObject(client, user, input.otherId);
-    if (target.id === source.id) problem(422, 'These records already share an identity.');
-    if (target.kind !== source.kind || target.visibility !== source.visibility)
-      problem(422, 'Only identities of the same type and access level can be merged.');
-    if (target.revision !== input.revision || source.revision !== input.otherRevision)
-      problem(409, 'This identity changed. Refresh and try again.');
-    await client.query(
-      'INSERT INTO omniboard.knowledge_identity_redirects (object_id, target_id) VALUES ($1, $2)',
-      [source.id, target.id],
-    );
-    await client.query(
-      'UPDATE omniboard.knowledge_objects SET revision = revision + 1, updated_at = now() WHERE id = $1',
-      [source.id],
-    );
-    await identityDecision(client, store, user, target, 'merge', input.reason, source.id);
-    return { id: target.id };
+    return mergeInto(client, store, user, targetId, input);
   });
+}
+/** 合并本身;调用方持有 lockKnowledge(导入个人履历时的自动合并也走这里)。 */
+export async function mergeInto(
+  client: Client,
+  store: EvidenceStore,
+  user: User,
+  targetId: string,
+  input: z.infer<typeof mergeInput>,
+): Promise<{ id: string }> {
+  const target = await getObject(client, user, targetId);
+  const source = await getObject(client, user, input.otherId);
+  if (target.id === source.id) problem(422, 'These records already share an identity.');
+  if (target.kind !== source.kind || target.visibility !== source.visibility)
+    problem(422, 'Only identities of the same type and access level can be merged.');
+  if (target.revision !== input.revision || source.revision !== input.otherRevision)
+    problem(409, 'This identity changed. Refresh and try again.');
+  await client.query(
+    'INSERT INTO omniboard.knowledge_identity_redirects (object_id, target_id) VALUES ($1, $2)',
+    [source.id, target.id],
+  );
+  await client.query(
+    'UPDATE omniboard.knowledge_objects SET revision = revision + 1, updated_at = now() WHERE id = $1',
+    [source.id],
+  );
+  await identityDecision(client, store, user, target, 'merge', input.reason, source.id);
+  return { id: target.id };
 }
 export const undoInput = z
   .object({

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // 组织架构图(frontend-spec 6.1–6.3),从 v1 OrgChart.vue 迁移。
-// 人员详情侧栏的「目标与激励」(6.16)随 position_drivers 一起迁移。
+// 人员详情侧栏带「目标与激励」(6.16)。
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { api, atLeast, errorText, session } from '../api';
 import { tr } from '../i18n';
 import { dateTime } from '../labels';
 import { openEvidence } from '../evidence';
+import PositionDrivers from './PositionDrivers.vue';
 import { cardHeight, cardWidth, descendants, layoutChart } from '../../shared/org-chart';
 import type { ModuleRecord, Organization } from '../../shared/types';
 import AppDialog from './AppDialog.vue';
@@ -709,6 +710,7 @@ onUnmounted(() => {
           </dd>
         </div>
       </dl>
+      <PositionDrivers :positions="[{ ...selected, organizationName: organization.name }]" />
       <p class="record-body">{{ selected.body }}</p>
       <p v-if="selected.relationshipNote" class="record-body">
         <strong>{{ tr('Relationship evidence') }}</strong>

@@ -737,6 +737,145 @@ test('workspace access pages', async ({ page }) => {
     await nav.getByRole('link', { name: 'Organizations' }).click();
   });
 
+  await test.step('talent: graph names, return state, profile import, generated movements, goals', async () => {
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    // 图谱里的人员名称链到人才库;后退回到图谱时恢复深度、历史、缩放与已选关系(7.7、7.8)。
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Relationships', exact: true }).click();
+    const graph = page.getByRole('region', { name: 'Relationship graph', exact: true });
+    const details = page.getByRole('region', { name: 'Relationship details' });
+    await expect(details).toContainText('Confirmed relationship');
+    const zoom = await graph.getByRole('button', { name: 'Reset zoom', exact: true }).textContent();
+    const morgan = graph.getByRole('link', { name: 'Morgan Manager', exact: true });
+    await expect(morgan).toHaveAttribute('href', /talent\?person=identity%3A/);
+    await morgan.click();
+    const drawer = page.getByRole('dialog', { name: 'Morgan Manager' });
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole('region', { name: 'Goals & incentives' })).toContainText(
+      'No goal or incentive information recorded.',
+    );
+    await page.goBack();
+    await expect(graph.getByRole('combobox', { name: 'Explore depth', exact: true })).toHaveValue(
+      '2',
+    );
+    await expect(
+      page.getByRole('checkbox', { name: 'Include history', exact: true }),
+    ).toBeChecked();
+    await expect(graph.getByRole('button', { name: 'Reset zoom', exact: true })).toHaveText(zoom!);
+    await expect(details).toContainText('Confirmed relationship');
+
+    // 目录:组织架构、联系人、人员变动里的人都在;搜索防抖后写入 URL(6.9)。
+    await nav.getByRole('link', { name: 'Talent directory' }).click();
+    await expect(page).toHaveURL(/\/w\/internal\/talent$/);
+    const table = page.locator('table.talent-table');
+    await expect(table.getByRole('button', { name: /Casey Chief/ })).toBeVisible();
+    await expect(table.getByRole('button', { name: /Robin Fixture/ })).toBeVisible();
+    await page.getByLabel('Search talent').fill('Morgan');
+    await expect(page).toHaveURL(/q=Morgan/);
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await table.getByRole('button', { name: /Morgan Manager/ }).click();
+    await expect(page).toHaveURL(/person=identity/);
+
+    // 从详情导入履历:预绑定当前人员,要写理由;生成的入职事件出现在机构的人员变动(6.13、6.14)。
+    await drawer.getByRole('button', { name: '+ Add profile source' }).click();
+    await expect(drawer).toBeHidden();
+    const profile = page.getByRole('dialog', { name: 'Import personal profile' });
+    await expect(profile.getByLabel('Person dossier')).not.toHaveValue('');
+    await profile
+      .getByLabel('Personal profile URL')
+      .fill('https://uk.linkedin.com/in/Morgan-Manager-Fixture/?trk=share');
+    await profile
+      .getByLabel('Why this is the same person')
+      .fill('Same name and role as the team page.');
+    const entry = profile.getByRole('group', { name: 'Career entry 1' });
+    await entry.getByLabel('Organization in directory').selectOption({ label: 'Acme Exchange' });
+    await expect(entry.getByLabel('Organization name in source')).toHaveValue('Acme Exchange');
+    await entry.getByLabel('Role', { exact: true }).fill('Head of Institutional Sales');
+    await entry.getByLabel('Employment status').selectOption('current');
+    await expect(entry.getByLabel('End date')).toBeDisabled();
+    await entry.getByLabel('Start date').fill('2024-03');
+    await expect(entry.getByRole('status')).toHaveText(
+      'Career only: this entry will not appear in organization movement tabs.',
+    );
+    await entry.getByLabel('Start of this role').selectOption('joined');
+    await expect(entry.getByRole('status')).toHaveText(
+      'Movement events will also appear in the corresponding organization tabs.',
+    );
+    await profile
+      .getByLabel('Original profile text')
+      .fill('Morgan Manager — Head of Institutional Sales, Acme Exchange (Mar 2024–Present)');
+    await profile.getByRole('button', { name: 'Save profile' }).click();
+    await expect(profile).toBeHidden();
+    await expect(page.getByRole('status').filter({ hasText: 'Profile saved' })).toBeVisible();
+    await expect(drawer).toBeVisible();
+    await expect(drawer.locator('.career-timeline')).toContainText('Head of Institutional Sales');
+    await expect(drawer.locator('.career-timeline')).toContainText(
+      '2024-03 · Month only → Present',
+    );
+    await drawer.getByText('Profile sources').click();
+    await expect(drawer).toContainText('https://www.linkedin.com/in/morgan-manager-fixture/');
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden();
+    await expect(page).not.toHaveURL(/person=/);
+
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'People Movements', exact: true }).click();
+    const movements = page.getByRole('region', { name: 'People Movements', exact: true });
+    await movements.getByText('Morgan Manager', { exact: true }).click();
+    const generated = movements.locator('details').filter({ hasText: 'Morgan Manager' });
+    await expect(generated).toContainText('2024-03 · Month only');
+    await expect(generated.getByRole('button', { name: 'Edit movement' })).toHaveCount(0);
+    await generated.getByRole('link', { name: 'Update source profile' }).click();
+    await expect(page).toHaveURL(/talent\?person=record(:|%3A)/);
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // 目标与激励绑定组织架构的职位,在架构侧栏和人才详情里都能看到(6.16)。
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Org Chart', exact: true }).click();
+    const chart = page.getByRole('region', { name: 'Interactive organization chart' });
+    await chart.getByRole('button', { name: 'View Morgan Manager' }).click();
+    const person = page.getByRole('complementary', { name: 'Selected person' });
+    const goals = person.getByRole('region', { name: 'Goals & incentives' });
+    await goals.getByRole('button', { name: '+ Add insight' }).click();
+    await goals.getByLabel(/^Type/).selectOption('kpi');
+    await goals.getByLabel('Title', { exact: true }).fill('Institutional volume target');
+    await goals
+      .getByLabel('Summary', { exact: true })
+      .fill('Desk target reported on the onboarding call.');
+    await goals.getByLabel('KPI pressure').selectOption('target_reported');
+    await goals.getByRole('button', { name: '+ Quantitative target' }).click();
+    await goals.getByLabel('Applies to').fill('Institutional desk');
+    await goals.getByLabel('Metric', { exact: true }).fill('Monthly volume');
+    await goals.getByLabel('Target value').fill('250000000');
+    await goals.getByLabel('Reported by / source').fill('Morgan Manager');
+    await goals.getByLabel('Original evidence').fill('Morgan: the desk must add 250M monthly.');
+    await goals.getByRole('button', { name: 'Save', exact: true }).click();
+    const card = goals.locator('article.driver-card');
+    await expect(card).toContainText('Institutional volume target');
+    await expect(card).toContainText('Reported');
+    await expect(card).toContainText('+250,000,000');
+    await expect(card).toContainText('Unit not specified');
+    await card.getByText('Source & validity').click();
+    await card.getByRole('button', { name: 'Edit · v1' }).click();
+    await expect(goals.getByLabel('Original evidence')).toHaveValue(
+      'Morgan: the desk must add 250M monthly.',
+    );
+    await goals.getByRole('button', { name: 'Cancel' }).click();
+    await nav.getByRole('link', { name: 'Talent directory' }).click();
+    await page.getByLabel('Search talent').fill('Morgan');
+    await table.getByRole('button', { name: /Morgan Manager/ }).click();
+    await expect(drawer.getByRole('region', { name: 'Goals & incentives' })).toContainText(
+      'Institutional volume target',
+    );
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Reset filters' }).click();
+    await expect(page).toHaveURL(/\/w\/internal\/talent$/);
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

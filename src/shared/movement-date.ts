@@ -1,4 +1,4 @@
-// 从 v1 src/modules/movement-date.ts 迁移,内容保持一致。
+// 从 v1 src/modules/movement-date.ts 迁移;另加由个人履历生成的键。
 import { z } from 'zod';
 export const movementDateBasisSchema = z.enum(['announcement', 'effective', 'reported', 'unknown']);
 
@@ -28,9 +28,28 @@ const metadataSchema = z
 export function datePrecision(date: string): 'day' | 'month' | 'year' | 'unknown' {
   return !date ? 'unknown' : date.length === 4 ? 'year' : date.length === 7 ? 'month' : 'day';
 }
-export function validateMovementDate(date: string, input: unknown = {}): Record<string, string> {
+// 由个人履历生成的变动另带这些键(frontend-spec 6.14)。只由履历导入写入,也随迁移导入;
+// 手工记录不接受。v1 的 previousRoleRawId / nextRoleRawId 改名 *EvidenceId。
+const profileKey = z.string().trim().max(300).optional();
+const profileMetadataSchema = metadataSchema.extend({
+  role: z.string().trim().max(300).optional(),
+  personProfileId: profileKey,
+  careerPositionId: profileKey,
+  previousCareerPositionId: profileKey,
+  previousRoleEvidenceId: profileKey,
+  nextCareerPositionId: profileKey,
+  nextRoleEvidenceId: profileKey,
+  transitionBasis: z.enum(['explicit_profile_transition', 'adjacent_profile_roles']).optional(),
+  previousRoleEnd: z.string().max(10).optional(),
+  nextRoleStart: z.string().max(10).optional(),
+});
+export function validateMovementDate(
+  date: string,
+  input: unknown = {},
+  fromProfile = false,
+): Record<string, string> {
   movementDateSchema.parse(date);
-  const metadata = metadataSchema.parse(input);
+  const metadata = (fromProfile ? profileMetadataSchema : metadataSchema).parse(input);
   const precision = metadata.eventDatePrecision || datePrecision(date);
   if (precision !== datePrecision(date))
     throw Object.assign(new Error('Date precision must match the recorded date.'), {

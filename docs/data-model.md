@@ -109,8 +109,10 @@
   不带时,v1 里没有关系元数据的上级原样导入、读作 `unconfirmed`。上级须先导入(按上级在前的顺序),
   v1 里指向不存在职位的 `reportsTo` 导入为 `''`(页面同样显示为顶层)。
 - `record_aliases` 经 `POST /api/import/record-aliases`(`{aliasId, recordId}`)写入,规则同机构别名。
-- 由个人履历生成的人员变动(`structured.personProfileId` 等键,frontend-spec 6.14)不经记录接口导入,
-  随 §3.4 人员档案一起迁移。
+- 由个人履历生成的人员变动(`structured.personProfileId` 等键,frontend-spec 6.14)也经记录接口导入:这些键只在
+  导入时接受(平时由履历导入生成,手工记录传了返回 422),v1 的 `previousRoleRawId` / `nextRoleRawId` 改名
+  `previousRoleEvidenceId` / `nextRoleEvidenceId`;归属随 §3.4 履历导入接回。已生成的变动不能经记录接口编辑(422),
+  要更新来源履历。
 
 实现补充(路线图,frontend-spec 10.11、10.12):里程碑就是 `tab_id = 'roadmap'` 的 `module_records`,不新增表;
 执行任务以 `work_tasks.source_record_id` 关联,状态读取时取任务本身,里程碑不存进度,也不随任务完成而改变。
@@ -123,7 +125,7 @@
 | `edit_history` | 新写入从 v2 开始 | ✗(proposal §9) |
 | `operation_events`(活动历史) | `id bigint generated always as identity`;`payload_json` → `payload jsonb`;加 `import_id`(v1 id,导入幂等) | ✓(**改判**:结论采纳的理由只存在活动事件里,不迁就丢了 7.13 的 Decision trail;D6 已允许写入原时间) |
 | `intelligence_reads`、`organization_follows` | — | ✓ |
-| `capital_scenarios`、`position_drivers` | `*_json` → `jsonb` | ✓ |
+| `capital_scenarios`、`position_drivers` | `*_json` → `jsonb`;`position_drivers` 的 `raw_id` / `attachment_id` 改名 `evidence_id` / `attachment_evidence_id`,可见性建立后不可改(触发器) | ✓ |
 | `imports` | 批量导入的幂等键(附录 A) | ✓ |
 
 ### 3.4 人员、关系、任务
@@ -135,18 +137,29 @@
 
 实现补充(共享对象、结论与身份,`005_knowledge.sql`):
 - 已建:`knowledge_objects`、`object_records`、`knowledge_claims`、`knowledge_relations`、
-  `knowledge_identity_redirects`、`knowledge_identity_events`、`operation_events`。人员档案表与任务表随人才库(6.9)、
-  工作台(§10)一起建。
+  `knowledge_identity_redirects`、`knowledge_identity_events`、`operation_events`。任务表见 `006_work.sql`,
+  人员档案表见 `008_talent.sql`。
 - `knowledge_claim_contexts` 并入 `knowledge_claims.organization_id`(一对一,v1 由触发器在插入时补写)。
 - 所有 `raw_id` 改名 `evidence_id`;API 字段 `rawId` 改名 `evidenceId`。日期列按 §1:`''` 记为 `NULL`,API 仍返回 `''`。
 - 身份相关的写入用事务级 advisory lock 串行(合并链、重定向与记录归属的检查读到的都是已提交状态)。
 - 带姓名的记录保存后自动建人员档案 `person-record:<记录 id>`(v1 `ensurePersonDossier`);**导入记录时不建**,
   v1 的档案随共享对象一起导入,避免 id 冲突。
-- v1 身份索引会把个人履历上的任职机构算进对象的关联机构;这一项随人才库一起接回。
 - 导入接口(只在导入窗口内由 admin 令牌调用;以 id 为键,已存在返回 409,与记录导入相同;引用的对象、记录、证据和
   成员须先导入,否则 422):`/api/import/knowledge-objects`(带 `recordIds`)、`knowledge-claims`(带
   `organizationId`,即 v1 的 claim context)、`knowledge-relations`、`identity-redirects`(按对幂等)、
   `identity-events`、`operation-events`(以 `importId` 为键)。team 对象不能引用 admin 记录或证据。
+
+实现补充(人才库,`008_talent.sql`,frontend-spec 6.9–6.16):
+- 建 `person_source_profiles`、`person_profile_captures`、`person_profile_positions`、`person_profile_records`、
+  `person_duplicate_decisions`,以及 §3.3 的 `position_drivers`。`data_json` / `payload_json` → `data` / `payload`(jsonb);
+  采集加 `seq`(取代 v1 rowid,决定先后);`person_profile_records.record_id` 唯一;重复决定的无序对按字节序
+  (`COLLATE "C"`)存 `left_id < right_id`;履历来源与岗位情报的可见性由触发器锁定。
+- 身份索引把履历上已映射的任职机构算进人员对象的关联机构(v1 行为接回)。
+- 导入接口(规则同上):`/api/import/person-profiles`(来源、按旧到新排列的 `captures`、`positions`;
+  `positions[].startRecordId` / `endRecordId` 指向已导入的生成变动,变动的 `structured.careerPositionId` 须与任职 id
+  一致;来源键由 `url` 重新计算)、`/api/import/person-duplicate-decisions`(须按 `leftId < rightId`)、
+  `/api/import/position-drivers`(岗位须为组织架构图记录;admin 岗位只能挂 admin 情报)。导入后照常更新同一来源时,
+  已导入的变动按任职 id 原地重新生成。
 
 实现补充(工作台任务,`006_work.sql`):
 - `work_tasks.raw_id` 改名 `evidence_id`;`follow_up_on`、`due_on` 按业务日期约定(`''` 记为 `NULL`,API 仍返回 `''`)。

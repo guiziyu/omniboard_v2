@@ -235,9 +235,11 @@ export async function saveRecord(
   if (!tabsFor(org.tags).some((t) => t.id === tabId) || tabId === 'stats')
     problem(422, 'This module does not accept manual records.');
   const chart = tabId === 'org_chart';
+  const importing = importFields.some((field) => input[field] !== undefined);
+  // 由个人履历生成的变动只经迁移导入写入这些键;平时由履历导入生成(frontend-spec 6.14)。
   const structured =
     tabId === 'people_movements'
-      ? validateMovementDate(input.eventDate, input.structured)
+      ? validateMovementDate(input.eventDate, input.structured, importing)
       : validateKnowledge(tabId, input.structured);
   if (structured.sensitivity === 'NDA' && input.visibility !== 'admin')
     problem(422, 'NDA records must use administrator visibility.');
@@ -255,7 +257,6 @@ export async function saveRecord(
   if (tabId === 'people_movements' && (!input.personName || !input.eventType))
     problem(422, 'A movement requires a person and event type. Leave unpublished dates unknown.');
   if (recordId && input.id) problem(422, 'A new record must not specify an existing ID.');
-  const importing = importFields.some((field) => input[field] !== undefined);
 
   return tx(pool, async (client) => {
     if (chart) await lockChart(client, org.id);
@@ -285,6 +286,11 @@ export async function saveRecord(
       problem(403, 'Administrator access is required.');
     if (existing && existing.revision !== input.revision)
       problem(409, 'This record has changed. Reopen the latest version.');
+    if (existing?.structured.personProfileId)
+      problem(
+        422,
+        'This movement comes from a personal profile. Update the source profile instead.',
+      );
     if (existing && existing.visibility !== input.visibility)
       problem(422, 'Visibility cannot change after creation. Create a new record.');
     if (input.reuseReference && !existing)

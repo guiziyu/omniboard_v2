@@ -15,7 +15,7 @@ const day = z.union([z.literal(''), z.iso.date()]).default('');
 const at = z.iso.datetime({ offset: true });
 
 /** 把约束错误翻成调用方能处理的状态码,而不是 500。 */
-async function insert(client: Client, sql: string, values: unknown[]): Promise<boolean> {
+export async function insert(client: Client, sql: string, values: unknown[]): Promise<boolean> {
   try {
     return !!(await client.query(sql, values)).rowCount;
   } catch (error) {
@@ -26,7 +26,7 @@ async function insert(client: Client, sql: string, values: unknown[]): Promise<b
     throw error;
   }
 }
-async function objectVisibility(client: Client, objectId: string): Promise<Visibility> {
+export async function objectVisibility(client: Client, objectId: string): Promise<Visibility> {
   const row = (
     await client.query<{ visibility: Visibility }>(
       'SELECT visibility FROM omniboard.knowledge_objects WHERE id = $1',
