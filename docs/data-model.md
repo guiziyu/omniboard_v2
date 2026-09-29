@@ -128,10 +128,10 @@ CREATE VIEW omniboard.v_connector_request AS
 CREATE TABLE omniboard.member (
   id              text PRIMARY KEY,           -- 迁移保留 v1 memberships.id
   name            text NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
-  email           citext NOT NULL UNIQUE,
+  email           text NOT NULL UNIQUE CHECK (email = lower(email)),  -- 不用 citext:建扩展要额外权限
   role            text NOT NULL CHECK (role IN ('reader','editor','trader','admin')),
   status          text NOT NULL CHECK (status IN ('invited','active','disabled')),
-  password_hash   text,                       -- argon2id;invited 时为 NULL
+  password_hash   text,                       -- scrypt(node:crypto,无原生依赖);invited 时为 NULL
   totp_secret_enc bytea,                      -- 用 OMNIBOARD_TOTP_KEY 加密;DB 读者不能据此生成验证码
   totp_last_step  bigint,                     -- 最近一次被接受的时间片,防止同一验证码重放
   failed_logins   integer NOT NULL DEFAULT 0,
@@ -142,6 +142,7 @@ CREATE TABLE omniboard.member (
 CREATE TABLE omniboard.member_invite (      -- 首次设置与重置 TOTP 共用
   token_hash  text PRIMARY KEY, member_id text NOT NULL REFERENCES omniboard.member(id),
   purpose     text NOT NULL CHECK (purpose IN ('activate','reset')),
+  pending_totp_enc bytea,                   -- 激活第 2 步生成、第 3 步确认后移到 member
   expires_at  timestamptz NOT NULL, used_at timestamptz, created_by text NOT NULL REFERENCES omniboard.member(id)
 );
 CREATE TABLE omniboard.member_recovery_code (
@@ -176,7 +177,7 @@ CREATE TABLE omniboard.audit_event (
   id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   at           timestamptz NOT NULL DEFAULT now(),
   actor_id     text NOT NULL REFERENCES omniboard.member(id),
-  via          text NOT NULL CHECK (via IN ('session','agent_token')),
+  via          text NOT NULL CHECK (via IN ('session','agent_token','cli')),  -- cli:bootstrap-admin
   agent_token_id text REFERENCES omniboard.agent_token(id),
   action       text NOT NULL,     -- 枚举见下
   target_table text NOT NULL,     -- 如 management.authentication
