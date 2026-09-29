@@ -1,6 +1,10 @@
 import { buildApp } from '../src/server/app';
 import { codeAt, stepAt } from '../src/server/totp';
 import type { Sender } from '../src/server/notifications';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { directoryStore } from '../src/server/evidence';
 import { createTestDb } from './test-db';
 export const origin = 'http://127.0.0.1:4318';
 export const password = 'correct horse battery staple';
@@ -29,9 +33,11 @@ export async function harness(options: { sender?: Sender } = {}) {
   const key = Buffer.alloc(32, 9);
   const clock = { now: Date.parse('2026-09-29T00:00:00Z') };
   const now = () => clock.now;
+  const evidenceDir = mkdtempSync(join(tmpdir(), 'omniboard-evidence-'));
   const app = await buildApp({
     pool: db.pool,
     totpKey: key,
+    evidence: directoryStore(evidenceDir),
     origin,
     now,
     serveStatic: false,
@@ -43,7 +49,7 @@ export async function harness(options: { sender?: Sender } = {}) {
   const tick = () => (clock.now += 30_000);
   const code = (secret: Buffer) => codeAt(secret, stepAt(clock.now));
   const request = (
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     url: string,
     auth: { cookie?: string; bearer?: string } = {},
     payload?: unknown,
@@ -79,6 +85,7 @@ export async function harness(options: { sender?: Sender } = {}) {
   const close = async () => {
     await app.close();
     await db.drop();
+    rmSync(evidenceDir, { recursive: true, force: true });
   };
   return { db, app, ctx, clock, tick, code, request, activate, login, close };
 }

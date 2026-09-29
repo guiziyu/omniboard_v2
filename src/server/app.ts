@@ -9,7 +9,6 @@ import type { Pool } from './db';
 import { tx } from './db';
 import {
   Problem,
-  atLeast,
   beginTotp,
   changePassword,
   completeActivation,
@@ -24,10 +23,9 @@ import {
   roles,
   sessionUser,
   type AuthContext,
-  type Role,
   type User,
 } from './auth';
-import { auditCategories, listAudit, type Actor } from './audit';
+import { auditCategories, listAudit } from './audit';
 import {
   changeRole,
   disableMember,
@@ -47,15 +45,14 @@ import {
 } from './tokens';
 import { deliverPending, type Sender } from './notifications';
 import { expectedVersion, schemaVersion } from './migrate';
-declare module 'fastify' {
-  interface FastifyRequest {
-    user: User;
-    actor: Actor;
-  }
-}
+import { requireInteractive, requireRole } from './access';
+import type { EvidenceStore } from './evidence';
+import { registerOrganizationRoutes } from './organization-routes';
 export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
+  /** 证据原件存储(data-model §1)。 */
+  evidence: EvidenceStore;
   origin: string;
   now?: () => number;
   logger?: boolean;
@@ -80,21 +77,6 @@ const readerWrites = new Set([
   '/api/security/recovery-codes',
 ]);
 const writeMethods = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
-export function requireRole(request: FastifyRequest, min: Role): void {
-  if (!atLeast(request.user.role, min))
-    problem(
-      403,
-      min === 'admin'
-        ? 'Administrator access is required.'
-        : min === 'trader'
-          ? 'This action requires the trader role.'
-          : 'This role has read-only access.',
-    );
-}
-/** 令牌调用不能做需要人在场的操作(当场确认、成员与令牌管理,frontend-spec 12.6)。 */
-export function requireInteractive(request: FastifyRequest): void {
-  if (request.actor.via !== 'session') problem(403, 'This action requires an interactive session.');
-}
 const bearerOf = (request: FastifyRequest) =>
   /^Bearer (\S+)$/.exec(request.headers.authorization ?? '')?.[1];
 export async function buildApp(options: AppOptions) {
@@ -391,6 +373,8 @@ export async function buildApp(options: AppOptions) {
       before: q.before,
     });
   });
+
+  registerOrganizationRoutes(app, { pool: options.pool, store: options.evidence, now: ctx.now });
 
   if (options.autoNotify !== false)
     app.addHook('onResponse', async (request) => {

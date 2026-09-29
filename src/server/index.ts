@@ -3,6 +3,7 @@ import { openPool } from './db';
 import { buildApp } from './app';
 import { expectedVersion, schemaVersion } from './migrate';
 import { deliverPending } from './notifications';
+import { directoryStore } from './evidence';
 const config = appConfig();
 const pool = openPool(config.pgUrl);
 // 结构版本不符就不启动(deploy.sh 同样自检,proposal §3)。
@@ -25,6 +26,7 @@ if (!locked.rows[0]!.ok) {
 const app = await buildApp({
   pool,
   totpKey: config.totpKey,
+  evidence: directoryStore(config.evidenceDir),
   origin: config.origin,
   logger: true,
   development: config.development,

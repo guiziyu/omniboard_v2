@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { codeAt, stepAt } from '../../src/server/totp';
 import { decodeBase32 } from '../helpers';
-// 每个页面至少一条用例(proposal §8):激活、成员、审计、设置、登录。一条连贯的流程,按页面分步。
+// 每个页面至少一条用例(proposal §8):激活、机构目录与详情、成员、审计、设置、登录。一条连贯的流程,按页面分步。
 const password = 'correct horse battery staple';
 let secret: Buffer = Buffer.alloc(0);
 let lastStep = 0;
@@ -34,6 +34,92 @@ test('workspace access pages', async ({ page }) => {
     await continueButton.click();
     await expect(page).toHaveURL(/\/w\/internal\/organizations$/);
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  });
+
+  await test.step('organizations: create, tag filters, ranking, search, remembered filters', async () => {
+    const main = page.getByRole('navigation', { name: 'Main' });
+    await expect(page.getByRole('heading', { name: 'Organizations', level: 1 })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Exchanges' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByRole('heading', { name: 'No matching organizations' })).toBeVisible();
+
+    async function add(name: string, tags: { check?: string[]; uncheck?: string[] }) {
+      await page.getByRole('button', { name: 'Add organization' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Add organization' });
+      await expect(dialog.getByLabel('Organization name')).toBeFocused();
+      await dialog.getByLabel('Organization name').fill(name);
+      for (const tag of tags.uncheck ?? []) await dialog.getByLabel(tag, { exact: true }).uncheck();
+      for (const tag of tags.check ?? []) await dialog.getByLabel(tag, { exact: true }).check();
+      await dialog.getByRole('button', { name: 'Create' }).click();
+      await expect(page).toHaveURL(/\/w\/internal\/organizations\/[^/]+\/overview/);
+      await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
+    }
+    // 一个 tag 都不选时不能创建。
+    await page.getByRole('button', { name: 'Add organization' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add organization' });
+    await dialog.getByLabel('Company', { exact: true }).uncheck();
+    await expect(dialog.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+
+    await add('Acme Exchange', { check: ['Exchange'] });
+    await expect(page.locator('.org-head')).toContainText('Company');
+    await expect(page.locator('.org-head')).toContainText('Exchange');
+    await expect(main.getByRole('link', { name: /^Organizations/ })).toContainText('1');
+    await page.getByRole('link', { name: '← Organizations' }).click();
+    await expect(page.getByRole('row', { name: /Acme Exchange/ })).toBeVisible();
+    await add('Beta Bank', { uncheck: ['Company'], check: ['Bank'] });
+    await expect(main.getByRole('link', { name: /^Organizations/ })).toContainText('2');
+    await page.getByRole('link', { name: '← Organizations' }).click();
+
+    await page.getByRole('button', { name: 'All', exact: true }).click();
+    await expect(page).toHaveURL(/tag=all/);
+    await page.getByLabel('Rank by').selectOption('name');
+    const names = page.locator('table.ranking tbody button.org-name strong');
+    await expect(names).toHaveText(['Beta Bank', 'Acme Exchange']);
+    await page.getByRole('button', { name: /^Organization/ }).click();
+    await expect(page).toHaveURL(/direction=asc/);
+    await expect(names).toHaveText(['Acme Exchange', 'Beta Bank']);
+    await page.getByLabel('Search organizations').fill('beta');
+    await expect(page).toHaveURL(/q=beta/);
+    await expect(names).toHaveText(['Beta Bank']);
+    await expect(page.getByText('1–1 of 1 organizations')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Banks' }).click();
+    await expect(page).not.toHaveURL(/sort=/);
+    await expect(page.getByRole('columnheader', { name: /Payment markets/ })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+    await page.getByRole('button', { name: 'About Payment markets' }).first().click();
+    const help = page.getByRole('region', { name: 'Payment markets explained' }).first();
+    await expect(help).toContainText('Provider-reported countries or markets');
+    await page.keyboard.press('Escape');
+    await expect(help).toBeHidden();
+    await page.getByText('Columns', { exact: true }).click();
+    await expect(page.getByRole('checkbox', { name: /Payment markets/ })).toBeDisabled();
+    await page.getByRole('checkbox', { name: /Total assets/ }).uncheck();
+    await expect(page).toHaveURL(/columns=/);
+    await expect(page.getByRole('columnheader', { name: /Total assets/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // 从别的页面进入、URL 不带 query 时恢复最近的筛选(frontend-spec 2.11)。
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await main.getByRole('link', { name: /^Organizations/ }).click();
+    await expect(page).toHaveURL(/tag=bank/);
+    await expect(page.getByRole('button', { name: 'Banks' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.getByRole('button', { name: 'Reset filters' }).click();
+    await expect(page).toHaveURL(/\/w\/internal\/organizations$/);
+    await expect(page.getByRole('button', { name: 'Exchanges' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(names).toHaveText(['Acme Exchange']);
   });
 
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {

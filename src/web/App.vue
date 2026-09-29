@@ -3,7 +3,7 @@
 // 登录后是侧栏 + 顶栏 + 页面。激活页不需要登录。
 import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
-import { api, errorText, session, type User } from './api';
+import { api, errorText, refreshSummary, session, summary, type User } from './api';
 import LoginView from './LoginView.vue';
 const route = useRoute();
 const loading = ref(true);
@@ -39,8 +39,14 @@ onMounted(async () => {
 });
 watch(
   () => session.user?.id,
-  (id) => id && readRecoveryNotice(),
+  (id) => {
+    if (!id) return;
+    readRecoveryNotice();
+    void refreshSummary().catch(() => undefined);
+  },
 );
+// 详情页、对比页不属于其他导航项时,Organizations 保持高亮(frontend-spec 2.3)。
+const inOrganizations = computed(() => route.path.startsWith('/w/internal/organizations'));
 watch(
   () => session.user?.locale,
   (locale) => (document.documentElement.lang = locale ?? 'en'),
@@ -62,7 +68,16 @@ async function logout() {
     <aside class="sidebar">
       <RouterLink to="/w/internal/organizations" class="brand">Omniboard</RouterLink>
       <nav aria-label="Main">
-        <RouterLink to="/w/internal/organizations">Organizations</RouterLink>
+        <RouterLink
+          to="/w/internal/organizations"
+          :class="{ 'router-link-active': inOrganizations }"
+          class="count-link"
+        >
+          Organizations
+          <span v-if="summary.organizations !== null" class="count">{{
+            summary.organizations
+          }}</span>
+        </RouterLink>
         <template v-if="isAdmin">
           <p class="group">Administration</p>
           <RouterLink to="/w/internal/members">Team members</RouterLink>
@@ -97,7 +112,12 @@ async function logout() {
         </span>
         <button type="button" class="ghost" @click="recoveryLeft = null">Dismiss</button>
       </p>
-      <RouterView />
+      <!-- 目录页进入详情时保持缓存,返回时不重新加载(frontend-spec 2.13)。 -->
+      <RouterView v-slot="{ Component }">
+        <KeepAlive include="DirectoryView">
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
     </div>
   </div>
 </template>

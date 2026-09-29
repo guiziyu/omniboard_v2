@@ -19,6 +19,8 @@
 - `npm run migrate`:用 `QUANT_PG_MIGRATOR_URL` 执行 `db/migrations/`(schema `omniboard` 归 migrator,D1)。
 - `db/owner/`:涉及 quant 表的角色与授权,由 owner 手工执行,不自动跑。
 - 应用用 `QUANT_PG_URL`(`omniboard_app`),启动时结构版本不符就退出。
+- 证据原件暂存本地目录 `OMNIBOARD_EVIDENCE_DIR`(默认 `data/`,不进 git);S3 接入后改为私有桶。
+- 迁移期结束:`npm run cli -- close-import`,此后导入接口不再接受系统时间戳(data-model D6)。
 
 ## 首个管理员
 

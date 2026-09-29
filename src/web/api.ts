@@ -35,3 +35,8 @@ export async function api<T>(
   return data as T;
 }
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** 侧栏机构总数(frontend-spec 2.3):登录后与新建机构后重新获取。 */
+export const summary = reactive<{ organizations: number | null }>({ organizations: null });
+export async function refreshSummary(): Promise<void> {
+  summary.organizations = (await api<{ organizations: number }>('/api/summary')).organizations;
+}

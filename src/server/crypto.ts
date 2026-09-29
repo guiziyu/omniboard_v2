@@ -21,7 +21,7 @@ export function verifyPassword(password: string, stored: string | null): boolean
     kind === 'scrypt' && expected.length === actual.length && timingSafeEqual(actual, expected)
   );
 }
-export const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+export const sha256 = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 export const randomToken = () => randomBytes(32).toString('base64url');
 /** 恢复码:12 位小写 base32,显示为 xxxx-xxxx-xxxx;比较时忽略连字符与大小写。 */
 export function recoveryCode(): string {

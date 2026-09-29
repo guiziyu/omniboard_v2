@@ -4,3 +4,4 @@ dist/
 .pgdata/
 test-results/
 playwright-report/
+data/

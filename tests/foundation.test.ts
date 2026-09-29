@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { buildApp } from '../src/server/app';
 import { bootstrapAdmin, stepUp } from '../src/server/auth';
 import { expectedVersion, migrate, schemaVersion } from '../src/server/migrate';
+import { directoryStore } from '../src/server/evidence';
 import { codeAt, stepAt } from '../src/server/totp';
 import { createTestDb } from './test-db';
 const origin = 'http://127.0.0.1:4318';
@@ -37,6 +38,8 @@ test('migrations, activation, TOTP login, sessions, lockout, step-up and audit',
   const app = await buildApp({
     pool: db.pool,
     totpKey: key,
+    // 本文件不涉及证据;目录不存在也不会被访问。
+    evidence: directoryStore('/nonexistent/omniboard-evidence'),
     origin,
     now: () => clock,
     serveStatic: false,

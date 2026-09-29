@@ -23,7 +23,8 @@
   - `workspace_id` 全部去掉(proposal §8 不做多 workspace)。
   - 可见性:`visibility text CHECK (visibility IN ('team','admin'))`,创建后不可改(spec 0.2),由触发器拒绝 UPDATE 该列。
 - 单进程互斥:定时采集等后台任务用 `pg_try_advisory_lock`,取代 v1 PID 锁。
-- 证据原件:S3 私有桶,对象键 `evidence/<sha256>`;库里只存元数据(3.1)。
+- 证据原件:S3 私有桶,对象键 `evidence/<sha256>`;库里只存元数据(3.1)。S3 接入之前,开发与测试用本地目录
+  (`OMNIBOARD_EVIDENCE_DIR/evidence/<sha256>`),读取时校验 sha256。
 
 ## 2 数据库角色与授权
 
@@ -63,15 +64,26 @@
 
 所有引用 v1 `raw_id` / `attachment_id` 的列改名为 `evidence_id` / `attachment_evidence_id`,外键指向 `evidence`。
 
+实现补充(`002_organizations.sql`):
+- `evidence.s3_key` 是生成列(`'evidence/' || sha256`),不能单独写。`visibility` 由触发器 `keep_visibility()`
+  拒绝修改,`module_records` 共用同一个函数。
+- `source_observations`、`metric_observations` 各加 `seq bigint GENERATED ALWAYS AS IDENTITY`,取代 v1 的 `rowid`,
+  在同一时刻的多条观测之间决定先后(frontend-spec 9.1)。
+- `collection_runs.snapshot_id` 改名 `evidence_id`。
+- 导入接口以 id 幂等:同 id 同内容视为已导入;同 id 不同内容返回 409。
+
 ### 3.2 机构
 
 | v2 表 | 变化 | 迁移 |
 |---|---|---|
 | `organizations` | — | ✓ |
 | `organization_tags` | tag 枚举取 v1 016 的 13 个;`exchange` 隐含 `company` 改为 PG 触发器 | ✓ |
-| `organization_aliases`、`organization_profiles`、`organization_logos`、`organization_external_keys` | `*_json` → `jsonb`;`organization_logos.logo_path` 改为证据 id(logo 原件也进 S3) | ✓ |
+| `organization_aliases`、`organization_profiles`、`organization_logos`、`organization_external_keys` | `*_json` → `jsonb`;`organization_logos.logo_path` 改为 `logo_evidence_id`(logo 原件也进 S3,须为 team 可见的 `image/*`),v1 `raw_id` 改为 `evidence_id`(抓取 logo 的来源页);`organization_external_keys` 主键改为 `external_key` | ✓ |
 
 ### 3.3 记录、指标、情报
+
+`module_records`、`edit_history`、`metric_observations` 先于本节其余表建立(`003_records_metrics.sql`):
+目录排名要读观测值与记录数,建机构与录入观测要写历史。
 
 | v2 表 | 变化 | 迁移 |
 |---|---|---|
@@ -313,5 +325,5 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 | D3 | 「恰有一个 `TradingSystem`」是否适用于 Test / ReadOnly / Terminated 账户(quant 只在交易入口要求,解析不要求) | 只对可交易账户要求恰好一个,其余最多一个 |
 | D4 | 第一批还没有 `hft-launcher`,不知道当前 HFT 进程的启动时间,无法判断「已改,重启后生效」 | 第一批只显示 `update_at` 和固定提示「改动在下次重启后生效」;第二批按 4.4 比较 |
 | D5 | 给 owner 发通知邮件的通道 | AWS SES,应用机器的实例角色授权;没配置时通知记为 `failed`,不阻塞操作 |
-| D6 | proposal §9 不迁移系统时间戳,导入后所有记录的 `updated_at` 都是导入时刻,「按更新时间排序」「最近变化」会失真 | 允许导入接口在 admin 令牌下写入 `created_at` / `updated_at`,仅迁移期开放 |
+| D6 | proposal §9 不迁移系统时间戳,导入后所有记录的 `updated_at` 都是导入时刻,「按更新时间排序」「最近变化」会失真 | 允许导入接口在 admin 令牌下写入 `created_at` / `updated_at`,仅迁移期开放。实现:同样适用于证据与观测的 `captured_at`;窗口是 `app_setting.import_open`,切换后 `npm run cli -- close-import` 关闭;窗口外或非 admin 令牌传入时间戳返回 403,不静默忽略 |
 | D7 | 只读角色的范围:proposal 说 agent 可读 `omniboard` schema,但其中有会话、TOTP、令牌表 | 只读角色排除 4.1 的表 |

@@ -263,7 +263,7 @@
 - 来源：src/web/components/OrgPicker.vue；OrganizationPage.vue
 
 ### 2.16 机构标志与图标
-- 机构标志：有 logo 地址时显示图片（懒加载）；没有地址或加载失败时，显示名称首字母。logo 地址变化后重新尝试加载。有大、小两种尺寸。
+- 机构标志：有 logo 地址时显示图片（懒加载）；没有地址或加载失败时，显示名称首字母。logo 地址变化后重新尝试加载。有大、小两种尺寸。首字母对读屏隐藏（名称总在旁边显示）。
 - 图标：一组内置线性图标（building、search、compare、database、users、plus、close、arrow、chevron、settings、grid、file、clock、check、menu、logout、info、lock、edit、copy、external、refresh 等），只做视觉提示，不承载独立信息；每个带图标的按钮都有文字或 aria-label。
 - 来源：src/web/components/OrgLogo.vue；src/web/components/Icon.vue
 
@@ -400,6 +400,7 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 - **限定值**：带 ≥ ≤ > ≈ 的值按其边界数字参与排名。
 - **record_count**：按当前用户可见的记录数计算(admin 记录只对 admin 计入)。
 - **限制**：API 每页 1–100 条，目录固定每页 30 条；`q` ≤200 字符。
+- **API 的 `rankedOnly=true`**：只返回有名次的机构，留给 agent 使用；界面不再发送（见 3.2「遗留链接」）。
 - **排名来源**：目录名次由指标值计算得出，不照搬来源网站公布的排名。
 - 来源：tests/rankings.test.ts（列组成、十进制排序、1/1/3/4/null、asc 时缺失值仍在最后、分页和搜索保持名次、BTC/USD 分开排、422、basis 过滤）；tests/business-roles.test.ts（非 exchange/company/government 的 tag 至少 4 列且没有 volume_24h）；tests/browser/exploration.spec.ts（交易所在 Companies 和 All 视图中都只出现一次）；src/modules/columns.ts；src/server/metrics.ts
 

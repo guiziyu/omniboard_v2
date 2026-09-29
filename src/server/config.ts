@@ -18,5 +18,7 @@ export function appConfig() {
     port: Number(process.env.PORT || 4318),
     host: process.env.HOST || '127.0.0.1',
     development: process.env.NODE_ENV === 'development',
+    // 证据原件目录;生产改用 S3(data-model §1,尚未接入)。
+    evidenceDir: process.env.OMNIBOARD_EVIDENCE_DIR || 'data',
   };
 }

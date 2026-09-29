@@ -48,9 +48,23 @@ async function main() {
       }
       return;
     }
+    case 'close-import': {
+      // 切换后关闭迁移窗口:此后任何调用方都不能写入系统时间(proposal §9、D6)。
+      const config = appConfig();
+      const pool = openPool(config.pgUrl, 1);
+      try {
+        await pool.query(
+          "UPDATE omniboard.app_setting SET value = 'false' WHERE key = 'import_open'",
+        );
+        console.log('Import window closed.');
+      } finally {
+        await pool.end();
+      }
+      return;
+    }
     default:
       throw new Error(
-        'Commands: migrate | selfcheck | bootstrap-admin --name <name> --email <email>',
+        'Commands: migrate | selfcheck | bootstrap-admin --name <name> --email <email> | close-import',
       );
   }
 }
