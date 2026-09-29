@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { problem } from './auth';
 import type { Pool } from './db';
 import { tx } from './db';
-import { importedTime, requireRole } from './access';
+import { importedTime, requireImport, requireRole } from './access';
 import {
   assertCanRead,
   evidencePreview,
@@ -15,6 +16,7 @@ import {
   createOrganization,
   directory,
   getOrganization,
+  linkSource,
   logoEvidence,
   metricInput,
   metricPoints,
@@ -22,7 +24,19 @@ import {
   organizationInput,
   recordMetric,
   setLogo,
+  sourceMatches,
 } from './organizations';
+import {
+  importFields,
+  knownTab,
+  moduleData,
+  observations,
+  recordHistory,
+  recordInput,
+  saveRecord,
+} from './records';
+import { getOrganizationProfile, saveOrganizationProfile } from './profiles';
+import { tabsFor } from '../shared/registry';
 // 机构目录、机构、指标观测与证据的接口(frontend-spec 2.6、3、5.10、9.2–9.3)。
 export type OrganizationDeps = { pool: Pool; store: EvidenceStore; now: () => number };
 const idParam = z.object({ id: z.string().min(1).max(100) });
@@ -53,9 +67,65 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
     );
     return reply.code(201).send(created);
   });
+  // 详情(frontend-spec 4.1):别名解析到规范机构;附最近一次采集的来源与可读的档案条目。
   app.get('/api/organizations/:id', async (request) => {
     const { id } = idParam.parse(request.params);
-    return { organization: await getOrganization(pool, id, request.user.role) };
+    const org = await getOrganization(pool, id, request.user.role);
+    return {
+      organization: {
+        ...org,
+        sources: await observations(pool, org.id),
+        profile: await getOrganizationProfile(pool, org.id, request.user.role),
+      },
+      tabs: tabsFor(org.tags),
+    };
+  });
+  // 样本历史(4.9):所有成功采集批次,最多 200 行。
+  app.get('/api/organizations/:id/observations', async (request) => {
+    const org = await getOrganization(pool, idParam.parse(request.params).id, request.user.role);
+    return { observations: await observations(pool, org.id, true) };
+  });
+  const tabParam = z.object({ id: z.string().min(1).max(100), tab: z.string().min(1).max(40) });
+  app.get('/api/organizations/:id/tabs/:tab', async (request) => {
+    const { id, tab } = tabParam.parse(request.params);
+    if (!knownTab(tab)) problem(404, 'Module not found.');
+    const org = await getOrganization(pool, id, request.user.role);
+    return moduleData(pool, org, tab, request.user.role);
+  });
+  const recordParam = tabParam.extend({ recordId: z.string().min(1).max(100).optional() });
+  for (const method of ['POST', 'PATCH'] as const)
+    app.route({
+      method,
+      url: `/api/organizations/:id/tabs/:tab/records${method === 'PATCH' ? '/:recordId' : ''}`,
+      bodyLimit: 8_000_000,
+      handler: async (request, reply) => {
+        requireRole(request, 'editor');
+        const { id, tab, recordId } = recordParam.parse(request.params);
+        const input = recordInput.parse(request.body);
+        if (importFields.some((field) => input[field] !== undefined))
+          await requireImport(pool, request);
+        const org = await getOrganization(pool, id, request.user.role);
+        const saved = await saveRecord(pool, store, request.user, org, tab, recordId, input);
+        return reply
+          .code(saved.created ? 201 : 200)
+          .send({ id: saved.id, revision: saved.revision });
+      },
+    });
+  app.get('/api/records/:id/history', async (request) => ({
+    history: await recordHistory(pool, idParam.parse(request.params).id, request.user.role),
+  }));
+  // 档案只经导入写入(4.7);带 revision 乐观并发。
+  const profileInput = z
+    .object({ profile: z.unknown(), revision: z.number().int().min(0) })
+    .strict();
+  app.put('/api/organizations/:id/profile', async (request) => {
+    requireRole(request, 'editor');
+    const { profile, revision } = profileInput.parse(request.body);
+    const org = await getOrganization(pool, idParam.parse(request.params).id, request.user.role);
+    return {
+      profile:
+        (await saveOrganizationProfile(pool, request.user, org.id, profile, revision)) ?? null,
+    };
   });
 
   app.get('/api/organizations/:id/logo', async (request, reply) => {
@@ -83,7 +153,10 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
   app.get('/api/organizations/:id/metrics', async (request) => {
     const organizationId = await canonicalId(pool, idParam.parse(request.params).id);
     const { column } = pointsQuery.parse(request.query);
-    return { points: await metricPoints(pool, [organizationId], column) };
+    return {
+      points: await metricPoints(pool, [organizationId], column),
+      candidates: await sourceMatches(pool, organizationId),
+    };
   });
   app.post('/api/organizations/:id/metrics', async (request, reply) => {
     requireRole(request, 'editor');
@@ -97,6 +170,15 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
       await importedTime(pool, request, capturedAt),
     );
     return reply.code(201).send(result);
+  });
+
+  const mappingInput = z.object({ organizationId: z.string().min(1).max(100) }).strict();
+  app.patch('/api/sources/mappings/:id', async (request) => {
+    requireRole(request, 'admin');
+    const { organizationId } = mappingInput.parse(request.body);
+    const org = await getOrganization(pool, organizationId, request.user.role);
+    await linkSource(pool, request.user, idParam.parse(request.params).id, org.id);
+    return { ok: true };
   });
 
   // 上传原件(迁移导入、附件):声明的 sha256 必须与内容一致(proposal §9)。

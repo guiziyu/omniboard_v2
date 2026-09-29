@@ -18,6 +18,8 @@ import { useRememberedFilters } from '../remembered-filters';
 import AppDialog from '../components/AppDialog.vue';
 import ColumnHelp from '../components/ColumnHelp.vue';
 import OrgLogo from '../components/OrgLogo.vue';
+import MetricDialog from '../components/MetricDialog.vue';
+import type { MetricPoint } from '../../shared/columns';
 defineOptions({ name: 'DirectoryView' });
 const PAGE_SIZE = 30;
 const route = useRoute();
@@ -238,6 +240,27 @@ onActivated(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)));
 
 const method = ref(false);
 
+// 指标来源对话框(3.3、9.2):「按此观测排名」就地更新目录 query 并关闭对话框。
+const metricTarget = ref<{ org: DirectoryOrganization; column: ColumnDefinition }>();
+function explore(org: DirectoryOrganization, column: ColumnDefinition) {
+  metricTarget.value = { org, column };
+}
+function rankWith(point: MetricPoint) {
+  update({
+    sort: point.columnId,
+    unit: point.unit,
+    basis: point.source,
+    year: /^\d{4}$/.test(point.period) ? point.period : year.value,
+  });
+  metricTarget.value = undefined;
+}
+// 对话框开着时,对应机构的数据随列表重新加载而更新。
+watch(organizations, (list) => {
+  const open = metricTarget.value;
+  const latest = open && list.find((o) => o.id === open.org.id);
+  if (open && latest) open.org = latest;
+});
+
 // ---- 新建机构(2.6) ----
 const creating = ref(false);
 const form = ref({ name: '', description: '', tags: ['company'] as OrganizationTag[] });
@@ -427,7 +450,18 @@ async function createOrganization() {
           <tbody>
             <tr v-for="org in organizations" :key="org.id">
               <td class="rank-cell">
+                <button
+                  v-if="org.rank && sortColumn?.kind === 'metric'"
+                  type="button"
+                  class="rank-number"
+                  :class="{ podium: org.rank <= 3 && !approximateRanking }"
+                  :aria-label="`Explain rank ${org.rank} for ${org.name}`"
+                  @click="explore(org, sortColumn)"
+                >
+                  {{ org.rank }}
+                </button>
                 <span
+                  v-else
                   class="rank-number"
                   :class="{ podium: org.rank !== null && org.rank <= 3 && !approximateRanking }"
                   >{{ org.rank ?? '—' }}</span
@@ -450,12 +484,17 @@ async function createOrganization() {
                 class="numeric"
                 :class="{ ranked: column.id === sort }"
               >
-                <span
+                <button
                   v-if="column.kind === 'metric'"
+                  type="button"
+                  class="metric-cell"
                   :class="{ missing: !org.values[column.id] }"
+                  :aria-label="`Inspect ${column.title} for ${org.name}`"
                   :title="org.values[column.id]?.value ?? 'No matching observation'"
-                  >{{ displayMetric(org.values[column.id], true) }}</span
+                  @click="explore(org, column)"
                 >
+                  {{ displayMetric(org.values[column.id], true) }}
+                </button>
                 <button
                   v-else
                   type="button"
@@ -517,6 +556,19 @@ async function createOrganization() {
     </div>
     <p class="hint">Every metric retains its source and observation date.</p>
 
+    <MetricDialog
+      v-if="metricTarget"
+      :organization="metricTarget.org"
+      :column="metricTarget.column"
+      :unit="columnUnit(metricTarget.column)"
+      :year="year"
+      :basis="basis"
+      :selected-id="metricTarget.org.values[metricTarget.column.id]?.id"
+      :rank="metricTarget.column.id === sort ? metricTarget.org.rank : undefined"
+      @close="metricTarget = undefined"
+      @updated="load"
+      @rank-by="rankWith"
+    />
     <AppDialog v-if="method" title="Ranking basis" @close="method = false">
       <p>{{ sortColumn?.description ?? 'Alphabetical or creation-date ordering.' }}</p>
       <label for="basis">Source selection</label>

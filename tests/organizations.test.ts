@@ -354,6 +354,32 @@ test('organizations, directory ranking, metric observations and evidence', async
       .points as MetricPoint[];
     assert.deepEqual(new Set(points.map((p) => p.unit)), new Set(['USD', 'BTC']));
     assert.ok(points.every((p) => p.evidenceId && p.sourceName && p.assumptions));
+
+    // 同名未确认的来源档案(9.2):列为候选,不计入;admin 确认后归到本机构(9.6)。
+    const same = await org('X', ['exchange']);
+    const candidates = (await get(`/api/organizations/${same}/metrics`)).json().candidates as {
+      linkId: string;
+      organizationId: string;
+      points: MetricPoint[];
+    }[];
+    assert.deepEqual(
+      candidates.map((c) => c.linkId).sort(),
+      [`cmc_web:${exchange}`, `cmc_web:${other}`, `coingecko_web:${exchange}`].sort(),
+    );
+    assert.ok(candidates.find((c) => c.linkId === `cmc_web:${other}`)!.points.length);
+    const link = (linkId: string, organizationId: string, role = 'admin') =>
+      request('PATCH', `/api/sources/mappings/${linkId}`, as(role), { organizationId });
+    assert.equal((await link(`cmc_web:${other}`, same, 'editor')).statusCode, 403);
+    assert.equal((await link(`cmc_web:${other}`, top)).statusCode, 422, 'not an exchange');
+    assert.equal((await link(`cmc_web:${other}`, same)).statusCode, 200);
+    assert.equal((await link(`cmc_web:${exchange}`, same)).statusCode, 409);
+    const moved = (await get(`/api/organizations/${same}/metrics?column=volume_24h`)).json();
+    assert.deepEqual(
+      moved.points.map((p: MetricPoint) => p.value),
+      ['4000000'],
+    );
+    assert.equal(moved.candidates.length, 1, 'only the other source remains a candidate');
+    assert.deepEqual((await get(`/api/organizations/${other}/metrics`)).json().points, []);
   });
 
   await t.test('record counts respect visibility; aliases leave the directory', async () => {

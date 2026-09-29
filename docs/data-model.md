@@ -85,6 +85,16 @@
 `module_records`、`edit_history`、`metric_observations` 先于本节其余表建立(`003_records_metrics.sql`):
 目录排名要读观测值与记录数,建机构与录入观测要写历史。
 
+实现补充(记录与档案):
+- `module_records.event_date` 为 `NULL` 时,API 仍返回 `''`(与 v1 相同)。
+- `edit_history.payload`:记录为保存后的字段快照(`title`、`body`、`scope`、`status`、`visibility`、`personName`、
+  `personEmail`、`structured`、`eventDate`、`eventType`、`evidenceId`、`attachmentEvidenceId`);档案为
+  `{profile, previousProfile}`;来源映射为 `{from, to}`。
+- `organization_profiles.profile` 里每条引用的键是 `evidenceId`(v1 为 `rawId`,导入时改名)。
+- 导入记录时,以下字段只在导入窗口内由 admin 令牌写入(D6 的延伸):`evidenceId` / `attachmentEvidenceId`
+  (引用已上传的证据,代替原文)、`authorId`(v1 作者,须是已导入的成员)、`importedRevision`(保留 v1 revision)、
+  `updatedAt`。`id` 任何编辑者都可传。team 记录不能引用 admin 证据。
+
 | v2 表 | 变化 | 迁移 |
 |---|---|---|
 | `module_records` | `structured_json` → `structured jsonb`;`event_date` 按业务日期约定 | ✓(保留 `revision`) |

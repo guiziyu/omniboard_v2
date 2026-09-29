@@ -6,7 +6,14 @@ const stack: symbol[] = [];
 // 对话框共用行为(frontend-spec 0.3):Escape 与点遮罩关闭(忙时除外);Tab 困在最上层对话框内,
 // 焦点在对话框外时被拉回;打开时先聚焦输入控件;关闭后焦点回到打开前的元素;背景禁止滚动。
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-const props = defineProps<{ title: string; busy?: boolean }>();
+// drawer:靠右的抽屉(证据抽屉 5.10);eyebrow:标题上方的小字。
+const props = defineProps<{
+  title: string;
+  busy?: boolean;
+  drawer?: boolean;
+  eyebrow?: string;
+  wide?: boolean;
+}>();
 const emit = defineEmits<{ close: [] }>();
 const self = Symbol('dialog');
 const panel = ref<HTMLElement | null>(null);
@@ -64,17 +71,21 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div class="overlay" @mousedown.self="close">
+  <div class="overlay" :class="{ 'drawer-overlay': drawer }" @mousedown.self="close">
     <section
       ref="panel"
       class="dialog"
+      :class="{ drawer, wide }"
       role="dialog"
       aria-modal="true"
       :aria-label="title"
       tabindex="-1"
     >
       <header>
-        <h2>{{ title }}</h2>
+        <div>
+          <small v-if="eyebrow" class="eyebrow">{{ eyebrow }}</small>
+          <h2>{{ title }}</h2>
+        </div>
         <button type="button" class="ghost" aria-label="Close" :disabled="busy" @click="close">
           ✕
         </button>

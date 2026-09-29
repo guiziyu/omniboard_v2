@@ -68,11 +68,11 @@ test('workspace access pages', async ({ page }) => {
     await expect(page.locator('.org-head')).toContainText('Company');
     await expect(page.locator('.org-head')).toContainText('Exchange');
     await expect(main.getByRole('link', { name: /^Organizations/ })).toContainText('1');
-    await page.getByRole('link', { name: '← Organizations' }).click();
+    await page.getByRole('button', { name: 'Back to organizations' }).click();
     await expect(page.getByRole('row', { name: /Acme Exchange/ })).toBeVisible();
     await add('Beta Bank', { uncheck: ['Company'], check: ['Bank'] });
     await expect(main.getByRole('link', { name: /^Organizations/ })).toContainText('2');
-    await page.getByRole('link', { name: '← Organizations' }).click();
+    await page.getByRole('button', { name: 'Back to organizations' }).click();
 
     await page.getByRole('button', { name: 'All', exact: true }).click();
     await expect(page).toHaveURL(/tag=all/);
@@ -120,6 +120,83 @@ test('workspace access pages', async ({ page }) => {
       'true',
     );
     await expect(names).toHaveText(['Acme Exchange']);
+  });
+
+  await test.step('records and metrics: add, draft, evidence, edit, history, observation', async () => {
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Market snapshot' })).toBeVisible();
+    await page.getByRole('button', { name: 'Contacts', exact: true }).click();
+    await expect(page).toHaveURL(/\/contacts$/);
+    await expect(page.getByRole('heading', { name: 'Ready for the first insight' })).toBeVisible();
+
+    // 草稿:有改动时关闭会先询问,重新打开可以恢复(frontend-spec 5.6)。
+    await page.getByRole('button', { name: 'Add the first record' }).click();
+    const editor = page.getByRole('dialog', { name: 'Add organization knowledge' });
+    await expect(editor.getByLabel('Title')).toBeFocused();
+    await editor.getByLabel('Title').fill('Acme institutional desk');
+    await page.keyboard.press('Escape');
+    await editor.getByRole('button', { name: 'Keep draft and close' }).click();
+    await expect(editor).toBeHidden();
+    await page.getByRole('button', { name: 'Add record' }).click();
+    await editor.getByRole('button', { name: 'Restore draft' }).click();
+    await expect(editor.getByLabel('Title')).toHaveValue('Acme institutional desk');
+
+    await editor.getByLabel('Address / profile URL').fill('desk@acme.test');
+    await editor.getByLabel('Business contact for / role').fill('Institutional sales');
+    await editor
+      .getByLabel('What has been checked, and what happens next?')
+      .fill('Listed on the website.');
+    await editor.getByLabel('Notes').fill('Public desk address.');
+    await editor
+      .getByLabel('Original text')
+      .fill('  Contact desk@acme.test for institutional accounts.  ');
+    await editor.getByRole('button', { name: 'Save record' }).click();
+    await expect(editor).toBeHidden();
+
+    const row = page.locator('details.record-card').filter({ hasText: 'Acme institutional desk' });
+    await row.locator('summary').click();
+    await expect(row).toContainText('Needs review');
+    await row.getByRole('button', { name: 'Original source' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Original reference' });
+    await expect(drawer.locator('pre')).toHaveText(
+      '  Contact desk@acme.test for institutional accounts.  ',
+    );
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden();
+
+    await row.getByRole('button', { name: 'Edit Acme institutional desk' }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit record' });
+    await expect(edit.getByLabel('Keep the existing original reference')).toBeChecked();
+    await edit.getByLabel('Notes').fill('Public desk address. Confirmed on the website.');
+    await edit.getByRole('button', { name: 'Save record' }).click();
+    await expect(edit).toBeHidden();
+    await expect(row).toContainText('v2');
+    await row.getByRole('button', { name: 'History' }).click();
+    const history = page.getByRole('dialog', { name: 'Record history' });
+    await expect(history.locator('article')).toHaveCount(2);
+    await page.keyboard.press('Escape');
+
+    // 指标:从目录单元格打开数据浏览器,录入一条团队观测后排名更新(9.2、9.3)。
+    await page.getByRole('button', { name: 'Back to organizations' }).click();
+    await page.getByRole('button', { name: 'Inspect 24h volume for Acme Exchange' }).click();
+    const explorer = page.getByRole('dialog', { name: '24h volume' });
+    await expect(explorer.getByRole('heading', { name: 'No observation recorded' })).toBeVisible();
+    await explorer.getByRole('button', { name: 'Add observation' }).click();
+    await explorer.getByLabel('Value').fill('1500000');
+    await explorer.getByLabel('Source name').fill('Acme monthly report');
+    await explorer.getByLabel('Scope and assumptions').fill('Spot only, 24h to 2026-09-28.');
+    await explorer.getByLabel('Original reference text').fill('24h spot volume: $1,500,000');
+    await explorer.getByRole('button', { name: 'Save observation' }).click();
+    await expect(explorer.getByText('Displayed value')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(explorer).toBeHidden();
+    const acme = page.getByRole('row', { name: /Acme Exchange/ });
+    await expect(
+      acme.getByRole('button', { name: 'Inspect 24h volume for Acme Exchange' }),
+    ).toHaveText('$1.50M');
+    await expect(
+      acme.getByRole('button', { name: 'Explain rank 1 for Acme Exchange' }),
+    ).toBeVisible();
   });
 
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {

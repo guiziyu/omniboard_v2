@@ -24,22 +24,25 @@ export function requireInteractive(request: FastifyRequest): void {
   if (request.actor.via !== 'session') problem(403, 'This action requires an interactive session.');
 }
 /**
- * 导入系统时间(proposal §9、D6):只在迁移窗口打开时、由 admin 令牌写入;其余调用方传了就拒绝,
- * 不静默忽略。窗口由 `npm run cli -- close-import` 关闭。
+ * 迁移导入专用的字段(proposal §9、D6):系统时间、原作者、原 revision、已上传的证据 id。只在导入窗口打开时、
+ * 由 admin 令牌写入;其余调用方传了就拒绝,不静默忽略。窗口由 `npm run cli -- close-import` 关闭。
  */
-export async function importedTime(
-  pool: Pool,
-  request: FastifyRequest,
-  value: string | undefined,
-): Promise<Date | undefined> {
-  if (value === undefined) return undefined;
+export async function requireImport(pool: Pool, request: FastifyRequest): Promise<void> {
   const open = await pool.query<{ value: boolean }>(
     "SELECT value FROM omniboard.app_setting WHERE key = 'import_open'",
   );
   if (request.actor.via !== 'agent_token' || request.user.role !== 'admin' || !open.rows[0]?.value)
     problem(
       403,
-      'System timestamps can only be imported with an administrator token while the import window is open.',
+      'Imported fields can only be written with an administrator token while the import window is open.',
     );
+}
+export async function importedTime(
+  pool: Pool,
+  request: FastifyRequest,
+  value: string | undefined,
+): Promise<Date | undefined> {
+  if (value === undefined) return undefined;
+  await requireImport(pool, request);
   return new Date(value);
 }

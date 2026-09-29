@@ -481,3 +481,75 @@ export async function recordMetric(
     return { id: metricId, evidenceId };
   });
 }
+
+/**
+ * 同名但未确认身份的其他来源档案(frontend-spec 9.2「Other source matches」):名称大小写不敏感相等、
+ * 尚未人工映射、本机构还没有该来源的链接;最多 10 条。这些观测不计入本机构。
+ */
+export async function sourceMatches(pool: Pool, organizationId: string) {
+  const links = await pool.query<{
+    linkId: string;
+    profileName: string;
+    organizationId: string;
+    source: string;
+  }>(
+    `SELECT l.id AS "linkId", l.name AS "profileName", l.organization_id AS "organizationId", l.source
+       FROM omniboard.source_entity_links l
+       JOIN omniboard.organizations target ON target.id = $1
+      WHERE l.organization_id <> $1 AND l.mapped_by IS NULL AND lower(l.name) = lower(target.name)
+        AND NOT EXISTS (SELECT 1 FROM omniboard.source_entity_links own
+                         WHERE own.organization_id = $1 AND own.source = l.source)
+      ORDER BY l.source, l.id LIMIT 10`,
+    [organizationId],
+  );
+  const points = await metricPoints(
+    pool,
+    links.rows.map((l) => l.organizationId),
+  );
+  return links.rows.map((link) => ({
+    ...link,
+    points: points.filter(
+      (p) => p.organizationId === link.organizationId && p.source === link.source,
+    ),
+  }));
+}
+/** 确认身份并把来源链接归到本机构(frontend-spec 9.2、9.6):仅 admin,只能链到交易所。 */
+export async function linkSource(
+  pool: Pool,
+  user: User,
+  linkId: string,
+  organizationId: string,
+): Promise<void> {
+  await tx(pool, async (client) => {
+    const tags = await client.query<{ tag: string }>(
+      'SELECT tag FROM omniboard.organization_tags WHERE organization_id = $1',
+      [organizationId],
+    );
+    if (!tags.rowCount) problem(404, 'Organization not found.');
+    if (!tags.rows.some((t) => t.tag === 'exchange'))
+      problem(422, 'Exchange sources can only be linked to exchange organizations.');
+    const link = (
+      await client.query<{ source: string; organization_id: string }>(
+        'SELECT source, organization_id FROM omniboard.source_entity_links WHERE id = $1 FOR UPDATE',
+        [linkId],
+      )
+    ).rows[0];
+    if (!link) problem(404, 'Source mapping not found.');
+    const other = await client.query(
+      `SELECT 1 FROM omniboard.source_entity_links
+        WHERE organization_id = $1 AND source = $2 AND id <> $3`,
+      [organizationId, link.source, linkId],
+    );
+    if (other.rowCount)
+      problem(409, 'This organization already has a different link to this source.');
+    await client.query(
+      'UPDATE omniboard.source_entity_links SET organization_id = $2, mapped_by = $3 WHERE id = $1',
+      [linkId, organizationId, user.id],
+    );
+    await client.query(
+      `INSERT INTO omniboard.edit_history (id, subject_id, action, revision, payload, author_id)
+       VALUES ($1,$2,'source_mapped',1,$3,$4)`,
+      [id(), linkId, { from: link.organization_id, to: organizationId }, user.id],
+    );
+  });
+}

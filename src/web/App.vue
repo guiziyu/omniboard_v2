@@ -5,6 +5,9 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
 import { api, errorText, refreshSummary, session, summary, type User } from './api';
 import LoginView from './LoginView.vue';
+import EvidenceDrawer from './components/EvidenceDrawer.vue';
+import { evidenceId } from './evidence';
+import './i18n'; // 同步 <html lang>(frontend-spec 2.10)
 const route = useRoute();
 const loading = ref(true);
 const bootError = ref('');
@@ -47,10 +50,6 @@ watch(
 );
 // 详情页、对比页不属于其他导航项时,Organizations 保持高亮(frontend-spec 2.3)。
 const inOrganizations = computed(() => route.path.startsWith('/w/internal/organizations'));
-watch(
-  () => session.user?.locale,
-  (locale) => (document.documentElement.lang = locale ?? 'en'),
-);
 watch(
   () => route.path,
   () => (menuOpen.value = false),
@@ -119,5 +118,6 @@ async function logout() {
         </KeepAlive>
       </RouterView>
     </div>
+    <EvidenceDrawer v-if="evidenceId" :id="evidenceId" @close="evidenceId = null" />
   </div>
 </template>
