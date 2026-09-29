@@ -68,6 +68,11 @@ const router = createRouter({
       meta: { title: 'Connectors' },
     },
     {
+      path: '/w/internal/accounts',
+      component: () => import('./views/AccountsView.vue'),
+      meta: { title: 'Accounts' },
+    },
+    {
       path: '/w/internal/sources',
       component: () => import('./views/SourcesView.vue'),
       meta: { title: 'Data sources' },

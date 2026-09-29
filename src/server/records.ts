@@ -231,6 +231,17 @@ export async function saveRecord(
   recordId: string | undefined,
   input: RecordInput,
 ): Promise<{ id: string; revision: number; created: boolean }> {
+  return tx(pool, (client) => saveRecordWith(client, user, org, tabId, recordId, input));
+}
+/** 同上,在调用方的事务里写(录入交易账户时同一事务标记 Onboarding 记录,proposal §5)。 */
+export async function saveRecordWith(
+  client: Client,
+  user: User,
+  org: { id: string; tags: Tag[] },
+  tabId: string,
+  recordId: string | undefined,
+  input: RecordInput,
+): Promise<{ id: string; revision: number; created: boolean }> {
   if (!tabsFor(org.tags).some((t) => t.id === tabId) || tabId === 'stats')
     problem(422, 'This module does not accept manual records.');
   const chart = tabId === 'org_chart';
@@ -257,216 +268,204 @@ export async function saveRecord(
     problem(422, 'A movement requires a person and event type. Leave unpublished dates unknown.');
   if (recordId && input.id) problem(422, 'A new record must not specify an existing ID.');
 
-  return tx(pool, async (client) => {
-    if (chart) await lockChart(client, org.id);
-    const existing = recordId
-      ? (
-          await client.query<{
-            id: string;
-            revision: number;
-            visibility: Visibility;
-            evidence_id: string;
-            attachment_evidence_id: string | null;
-            reports_to: string;
-            relationship_kind: 'confirmed' | 'unconfirmed' | null;
-            structured: Record<string, string>;
-          }>(
-            `SELECT r.id, r.revision, r.visibility, r.evidence_id, r.attachment_evidence_id,
-                    r.reports_to, c.kind AS relationship_kind, r.structured
-               FROM omniboard.module_records r
-               LEFT JOIN omniboard.org_chart_relationships c ON c.record_id = r.id
-              WHERE r.id = $1 AND r.organization_id = $2 AND r.tab_id = $3 FOR UPDATE OF r`,
-            [recordId, org.id, tabId],
-          )
-        ).rows[0]
-      : undefined;
-    if (recordId && !existing) problem(404, 'Record not found.');
-    if (existing?.visibility === 'admin' && user.role !== 'admin')
-      problem(403, 'Administrator access is required.');
-    if (existing && existing.revision !== input.revision)
-      problem(409, 'This record has changed. Reopen the latest version.');
-    if (existing?.structured.personProfileId)
-      problem(
-        422,
-        'This movement comes from a personal profile. Update the source profile instead.',
-      );
-    if (existing && existing.visibility !== input.visibility)
-      problem(422, 'Visibility cannot change after creation. Create a new record.');
-    if (input.reuseReference && !existing)
-      problem(422, 'Only an existing record can retain its reference.');
-    if (!input.reuseReference && !input.evidenceId && !input.rawText.trim())
-      problem(422, 'Original reference text is required.');
-    if (tabId === 'comments')
-      await validateDiscussionReferences(
-        client,
-        org.id,
-        structured,
-        input.visibility,
-        existing?.id ?? input.id,
-      );
-    if ((tabId === 'api_optimization' || tabId === 'tech_stack') && structured.sourceId) {
-      const clash = await client.query(
-        `SELECT 1 FROM omniboard.module_records
-          WHERE organization_id = $1 AND tab_id IN ('api_optimization','tech_stack')
-            AND structured->>'sourceId' = $2 AND id <> $3 LIMIT 1`,
-        [org.id, structured.sourceId, existing?.id ?? ''],
-      );
-      if (clash.rowCount)
-        problem(
-          409,
-          `Source ID ${structured.sourceId} is already used by another record of this organization.`,
-        );
-    }
-
-    // 汇报关系(frontend-spec 6.2、6.4):上级或确定性变了就要新的关系理由;只改其他字段时保留原确定性。
-    let relationship:
-      { kind: 'confirmed' | 'unconfirmed'; note: string; evidenceId?: string } | undefined;
-    if (chart) {
-      const kind = input.reportsTo
-        ? (input.relationshipKind ??
-          (existing?.reports_to === input.reportsTo
-            ? (existing.relationship_kind ?? undefined)
-            : undefined) ??
-          'unconfirmed')
-        : 'unconfirmed';
-      const changed = existing
-        ? existing.reports_to !== input.reportsTo ||
-          (existing.relationship_kind ?? 'unconfirmed') !== kind
-        : !!input.reportsTo;
-      const note =
-        input.relationshipNote || (changed && !input.reuseReference ? input.rawText : '');
-      await validateReportsTo(
-        client,
-        org.id,
-        existing?.id ?? '',
-        input.reportsTo,
-        input.visibility,
-      );
-      if (input.relationshipEvidenceId) {
-        await checkEvidence(client, input.relationshipEvidenceId, input.visibility);
-        relationship = { kind, note, evidenceId: input.relationshipEvidenceId };
-      } else if (changed && !note.trim() && !importing)
-        problem(422, 'Record the evidence or reason for this relationship change.');
-      else if (note.trim()) relationship = { kind, note };
-    }
-
-    let evidenceId: string;
-    if (input.evidenceId) {
-      await checkEvidence(client, input.evidenceId, input.visibility);
-      evidenceId = input.evidenceId;
-    } else if (input.reuseReference) evidenceId = existing!.evidence_id;
-    else
-      evidenceId = await saveEvidence(client, Buffer.from(input.rawText), {
-        source: 'manual',
-        url: input.sourceUrl,
-        contentType: 'text/plain; charset=utf-8',
-        visibility: input.visibility,
-      });
-    let attachmentId = existing?.attachment_evidence_id ?? null;
-    if (input.attachmentEvidenceId) {
-      await checkEvidence(client, input.attachmentEvidenceId, input.visibility);
-      attachmentId = input.attachmentEvidenceId;
-    } else if (input.attachment) {
-      const bytes = Buffer.from(input.attachment.base64, 'base64');
-      if (bytes.length > 5_000_000 || bytes.length === 0)
-        problem(422, 'Attachments must be between 1 byte and 5 MB.');
-      attachmentId = await saveEvidence(client, bytes, {
-        source: 'attachment',
-        url: input.sourceUrl,
-        contentType: 'application/octet-stream',
-        filename: input.attachment.filename,
-        visibility: input.visibility,
-      });
-    }
-
-    if (input.authorId) {
-      const author = await client.query('SELECT 1 FROM omniboard.member WHERE id = $1', [
-        input.authorId,
-      ]);
-      if (!author.rowCount) problem(422, 'The imported author is not a member.');
-    }
-    if (existing && input.importedRevision)
-      problem(422, 'An imported revision only applies to a new record.');
-    const id_ = existing?.id ?? input.id ?? id();
-    const revision = existing ? existing.revision + 1 : (input.importedRevision ?? 1);
-    const authorId = input.authorId ?? user.id;
-    const updatedAt = input.updatedAt ? new Date(input.updatedAt) : null;
-    const values = [
-      id_,
-      input.title,
-      input.body,
-      input.scope,
-      input.status,
-      input.personName,
-      input.personEmail,
-      structured,
-      input.eventDate || null,
-      input.eventType,
-      evidenceId,
-      attachmentId,
-      revision,
-      authorId,
-      updatedAt,
-      input.reportsTo,
-    ];
-    if (existing) {
-      const updated = await client.query(
-        `UPDATE omniboard.module_records
-            SET title = $2, body = $3, scope = $4, status = $5, person_name = $6, person_email = $7,
-                structured = $8, event_date = $9, event_type = $10, evidence_id = $11,
-                attachment_evidence_id = $12, revision = $13, author_id = $14,
-                updated_at = COALESCE($15, now()), reports_to = $16
-          WHERE id = $1 AND revision = $17`,
-        [...values, input.revision],
-      );
-      if (updated.rowCount !== 1) problem(409, 'Record revision conflict. Reload and try again.');
-    } else {
-      const inserted = await client.query(
-        `INSERT INTO omniboard.module_records
-           (id, title, body, scope, status, person_name, person_email, structured, event_date,
-            event_type, evidence_id, attachment_evidence_id, revision, author_id, updated_at,
-            reports_to, organization_id, tab_id, visibility)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE($15, now()),$16,$17,$18,$19)
-         ON CONFLICT (id) DO NOTHING`,
-        [...values, org.id, tabId, input.visibility],
-      );
-      if (!inserted.rowCount) problem(409, 'A record with this id already exists.');
-    }
-    // 带姓名的记录建独立人员档案(6.4);导入时 v1 的档案随共享对象一起导入,这里不自动建。
-    if (!importing) await ensurePersonDossier(client, id_);
-    if (relationship)
-      await saveRelationship(client, id_, {
-        ...relationship,
-        sourceUrl: input.sourceUrl,
-        visibility: input.visibility,
-      });
-    await writeHistory(
+  if (chart) await lockChart(client, org.id);
+  const existing = recordId
+    ? (
+        await client.query<{
+          id: string;
+          revision: number;
+          visibility: Visibility;
+          evidence_id: string;
+          attachment_evidence_id: string | null;
+          reports_to: string;
+          relationship_kind: 'confirmed' | 'unconfirmed' | null;
+          structured: Record<string, string>;
+        }>(
+          `SELECT r.id, r.revision, r.visibility, r.evidence_id, r.attachment_evidence_id,
+                  r.reports_to, c.kind AS relationship_kind, r.structured
+             FROM omniboard.module_records r
+             LEFT JOIN omniboard.org_chart_relationships c ON c.record_id = r.id
+            WHERE r.id = $1 AND r.organization_id = $2 AND r.tab_id = $3 FOR UPDATE OF r`,
+          [recordId, org.id, tabId],
+        )
+      ).rows[0]
+    : undefined;
+  if (recordId && !existing) problem(404, 'Record not found.');
+  if (existing?.visibility === 'admin' && user.role !== 'admin')
+    problem(403, 'Administrator access is required.');
+  if (existing && existing.revision !== input.revision)
+    problem(409, 'This record has changed. Reopen the latest version.');
+  if (existing?.structured.personProfileId)
+    problem(422, 'This movement comes from a personal profile. Update the source profile instead.');
+  if (existing && existing.visibility !== input.visibility)
+    problem(422, 'Visibility cannot change after creation. Create a new record.');
+  if (input.reuseReference && !existing)
+    problem(422, 'Only an existing record can retain its reference.');
+  if (!input.reuseReference && !input.evidenceId && !input.rawText.trim())
+    problem(422, 'Original reference text is required.');
+  if (tabId === 'comments')
+    await validateDiscussionReferences(
       client,
-      id_,
-      existing ? 'record_updated' : 'record_created',
-      revision,
-      authorId,
-      updatedAt,
+      org.id,
+      structured,
+      input.visibility,
+      existing?.id ?? input.id,
     );
-    // 接入请求与由它产生的任务(frontend-spec 11.1、11.5);导入的记录不生成,v1 的请求另行导入。
-    if (!importing)
-      await onRecordSaved(
-        client,
-        user,
-        {
-          organizationId: org.id,
-          tabId,
-          recordId: id_,
-          revision,
-          visibility: input.visibility,
-          evidenceId,
-          structured,
-          previous: existing?.structured,
-        },
-        new Date().toISOString().slice(0, 10),
+  if ((tabId === 'api_optimization' || tabId === 'tech_stack') && structured.sourceId) {
+    const clash = await client.query(
+      `SELECT 1 FROM omniboard.module_records
+        WHERE organization_id = $1 AND tab_id IN ('api_optimization','tech_stack')
+          AND structured->>'sourceId' = $2 AND id <> $3 LIMIT 1`,
+      [org.id, structured.sourceId, existing?.id ?? ''],
+    );
+    if (clash.rowCount)
+      problem(
+        409,
+        `Source ID ${structured.sourceId} is already used by another record of this organization.`,
       );
-    return { id: id_, revision, created: !existing };
-  });
+  }
+
+  // 汇报关系(frontend-spec 6.2、6.4):上级或确定性变了就要新的关系理由;只改其他字段时保留原确定性。
+  let relationship:
+    { kind: 'confirmed' | 'unconfirmed'; note: string; evidenceId?: string } | undefined;
+  if (chart) {
+    const kind = input.reportsTo
+      ? (input.relationshipKind ??
+        (existing?.reports_to === input.reportsTo
+          ? (existing.relationship_kind ?? undefined)
+          : undefined) ??
+        'unconfirmed')
+      : 'unconfirmed';
+    const changed = existing
+      ? existing.reports_to !== input.reportsTo ||
+        (existing.relationship_kind ?? 'unconfirmed') !== kind
+      : !!input.reportsTo;
+    const note = input.relationshipNote || (changed && !input.reuseReference ? input.rawText : '');
+    await validateReportsTo(client, org.id, existing?.id ?? '', input.reportsTo, input.visibility);
+    if (input.relationshipEvidenceId) {
+      await checkEvidence(client, input.relationshipEvidenceId, input.visibility);
+      relationship = { kind, note, evidenceId: input.relationshipEvidenceId };
+    } else if (changed && !note.trim() && !importing)
+      problem(422, 'Record the evidence or reason for this relationship change.');
+    else if (note.trim()) relationship = { kind, note };
+  }
+
+  let evidenceId: string;
+  if (input.evidenceId) {
+    await checkEvidence(client, input.evidenceId, input.visibility);
+    evidenceId = input.evidenceId;
+  } else if (input.reuseReference) evidenceId = existing!.evidence_id;
+  else
+    evidenceId = await saveEvidence(client, Buffer.from(input.rawText), {
+      source: 'manual',
+      url: input.sourceUrl,
+      contentType: 'text/plain; charset=utf-8',
+      visibility: input.visibility,
+    });
+  let attachmentId = existing?.attachment_evidence_id ?? null;
+  if (input.attachmentEvidenceId) {
+    await checkEvidence(client, input.attachmentEvidenceId, input.visibility);
+    attachmentId = input.attachmentEvidenceId;
+  } else if (input.attachment) {
+    const bytes = Buffer.from(input.attachment.base64, 'base64');
+    if (bytes.length > 5_000_000 || bytes.length === 0)
+      problem(422, 'Attachments must be between 1 byte and 5 MB.');
+    attachmentId = await saveEvidence(client, bytes, {
+      source: 'attachment',
+      url: input.sourceUrl,
+      contentType: 'application/octet-stream',
+      filename: input.attachment.filename,
+      visibility: input.visibility,
+    });
+  }
+
+  if (input.authorId) {
+    const author = await client.query('SELECT 1 FROM omniboard.member WHERE id = $1', [
+      input.authorId,
+    ]);
+    if (!author.rowCount) problem(422, 'The imported author is not a member.');
+  }
+  if (existing && input.importedRevision)
+    problem(422, 'An imported revision only applies to a new record.');
+  const id_ = existing?.id ?? input.id ?? id();
+  const revision = existing ? existing.revision + 1 : (input.importedRevision ?? 1);
+  const authorId = input.authorId ?? user.id;
+  const updatedAt = input.updatedAt ? new Date(input.updatedAt) : null;
+  const values = [
+    id_,
+    input.title,
+    input.body,
+    input.scope,
+    input.status,
+    input.personName,
+    input.personEmail,
+    structured,
+    input.eventDate || null,
+    input.eventType,
+    evidenceId,
+    attachmentId,
+    revision,
+    authorId,
+    updatedAt,
+    input.reportsTo,
+  ];
+  if (existing) {
+    const updated = await client.query(
+      `UPDATE omniboard.module_records
+          SET title = $2, body = $3, scope = $4, status = $5, person_name = $6, person_email = $7,
+              structured = $8, event_date = $9, event_type = $10, evidence_id = $11,
+              attachment_evidence_id = $12, revision = $13, author_id = $14,
+              updated_at = COALESCE($15, now()), reports_to = $16
+        WHERE id = $1 AND revision = $17`,
+      [...values, input.revision],
+    );
+    if (updated.rowCount !== 1) problem(409, 'Record revision conflict. Reload and try again.');
+  } else {
+    const inserted = await client.query(
+      `INSERT INTO omniboard.module_records
+         (id, title, body, scope, status, person_name, person_email, structured, event_date,
+          event_type, evidence_id, attachment_evidence_id, revision, author_id, updated_at,
+          reports_to, organization_id, tab_id, visibility)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE($15, now()),$16,$17,$18,$19)
+       ON CONFLICT (id) DO NOTHING`,
+      [...values, org.id, tabId, input.visibility],
+    );
+    if (!inserted.rowCount) problem(409, 'A record with this id already exists.');
+  }
+  // 带姓名的记录建独立人员档案(6.4);导入时 v1 的档案随共享对象一起导入,这里不自动建。
+  if (!importing) await ensurePersonDossier(client, id_);
+  if (relationship)
+    await saveRelationship(client, id_, {
+      ...relationship,
+      sourceUrl: input.sourceUrl,
+      visibility: input.visibility,
+    });
+  await writeHistory(
+    client,
+    id_,
+    existing ? 'record_updated' : 'record_created',
+    revision,
+    authorId,
+    updatedAt,
+  );
+  // 接入请求与由它产生的任务(frontend-spec 11.1、11.5);导入的记录不生成,v1 的请求另行导入。
+  if (!importing)
+    await onRecordSaved(
+      client,
+      user,
+      {
+        organizationId: org.id,
+        tabId,
+        recordId: id_,
+        revision,
+        visibility: input.visibility,
+        evidenceId,
+        structured,
+        previous: existing?.structured,
+      },
+      new Date().toISOString().slice(0, 10),
+    );
+  return { id: id_, revision, created: !existing };
 }
 /** 调整汇报关系(frontend-spec 6.2):只改上级与确定性,理由必填且单独存证;editor 看不到的职位返回 404。 */
 export const relationshipInput = z

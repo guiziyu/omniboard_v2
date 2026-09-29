@@ -16,6 +16,8 @@ async function nextCode(page: Page): Promise<string> {
   return codeAt(secret, lastStep);
 }
 test('workspace access pages', async ({ page }) => {
+  // 每次当场确认要一个新的 30 秒时间片(nextCode),交易账户一步就要等几个时间片。
+  test.setTimeout(240_000);
   const { inviteToken } = JSON.parse(readFileSync('test-results/browser-state.json', 'utf8'));
 
   await test.step('activation: password, authenticator, recovery codes', async () => {
@@ -1172,6 +1174,97 @@ test('workspace access pages', async ({ page }) => {
     await page.keyboard.press('Escape');
     await expect(manage).toBeHidden();
     await expect(page.getByRole('row', { name: /Tia Trader/ })).toContainText('trader');
+  });
+
+  await test.step('trading accounts: add with step-up, review edit, rotate, terminate', async () => {
+    await page.getByRole('link', { name: 'Accounts' }).click();
+    await expect(page.getByRole('heading', { name: 'Accounts', level: 1 })).toBeVisible();
+    await expect(page.getByText('No matching accounts.')).toBeVisible();
+    await page.getByRole('button', { name: 'Egress IPs' }).click();
+    const egress = page.getByRole('dialog', { name: 'Known egress IPs' });
+    await egress
+      .getByLabel('One IP per line, optionally followed by a note')
+      .fill('52.1.2.3 Neo EIP');
+    await egress.getByRole('button', { name: 'Save' }).click();
+    await expect(egress).toBeHidden();
+
+    await page.getByRole('button', { name: 'Add account' }).click();
+    const add = page.getByRole('dialog', { name: 'Add account' });
+    await add.getByLabel('Exchange').selectOption('Binance');
+    await add.getByLabel('Account name').fill(' binance-lp-01 ');
+    await expect(add.getByText('Auth ID: Binance_binance-lp-01')).toBeVisible();
+    await add.getByLabel('Portfolio group').fill('lp-browser');
+    await add.getByLabel('Unified', { exact: true }).check();
+    await add.getByLabel('Known egress IP').selectOption('52.1.2.3');
+    await add.getByRole('button', { name: 'Add known egress IP' }).click();
+    const whitelist = add.getByLabel('IP whitelist');
+    await expect(whitelist).toHaveValue('52.1.2.3');
+    await whitelist.fill('52.1.2.3\n52.1.2.0/24');
+    await expect(add.getByText('Line 2: Not a valid IP address.')).toBeVisible();
+    await whitelist.fill('52.1.2.3\n2001:db8::1');
+    await expect(add.getByText(/Not a valid IP address/)).toBeHidden();
+    await add.getByLabel('API key').fill('browser-key-1');
+    await add.getByLabel('API secret').fill('browser-secret-1');
+    await add.getByRole('button', { name: 'Save' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Confirm with your authenticator code' });
+    await expect(confirm.getByText('Add the account Binance_binance-lp-01')).toBeVisible();
+    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
+    await confirm.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page).toHaveURL(/account=Binance_binance-lp-01/);
+    const drawer = page.getByRole('dialog', { name: 'binance-lp-01' });
+    await expect(drawer.locator('dt:text-is("Portfolio group") + dd')).toHaveText('lp-browser');
+    await expect(drawer.getByRole('cell', { name: 'Account created' })).toBeVisible();
+    const key = drawer.locator('dt:text-is("Key") + dd');
+    await expect(key).toHaveText(/^[0-9a-f]{8}$/);
+    const firstKey = await key.textContent();
+    await expect(page.getByText('browser-key-1')).toHaveCount(0);
+
+    // 编辑:先看改前 / 改后对照,再当场确认。
+    await drawer.getByRole('button', { name: 'Edit' }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit binance-lp-01' });
+    await edit.getByLabel('Test', { exact: true }).check();
+    await edit.getByLabel('Owner').fill('Browser Owner');
+    await edit.getByRole('button', { name: 'Review changes' }).click();
+    const review = page.getByRole('dialog', { name: 'Review changes' });
+    await expect(review.getByRole('row', { name: 'Account type Live Test' })).toBeVisible();
+    await expect(review.getByRole('row', { name: 'Owner — Browser Owner' })).toBeVisible();
+    await expect(review.getByRole('row')).toHaveCount(3);
+    await review.getByRole('button', { name: 'Continue' }).click();
+    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
+    await confirm.getByRole('button', { name: 'Confirm' }).click();
+    await expect(drawer.locator('dt:text-is("Status") + dd')).toHaveText('Test');
+    await expect(drawer.getByRole('cell', { name: 'Owner changed' })).toBeVisible();
+
+    // 轮换:验证码错误时确认框保留。
+    await drawer.getByRole('button', { name: 'Rotate key' }).click();
+    const rotate = page.getByRole('dialog', { name: 'Rotate key' });
+    await rotate.getByLabel('New API key').fill('browser-key-2');
+    await rotate.getByLabel('New API secret').fill('browser-secret-2');
+    await rotate.getByRole('button', { name: 'Rotate key' }).click();
+    await confirm.getByLabel('6-digit code').fill('000000');
+    await confirm.getByRole('button', { name: 'Confirm' }).click();
+    await expect(confirm.getByRole('alert')).toHaveText('The code is incorrect.');
+    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
+    await confirm.getByRole('button', { name: 'Confirm' }).click();
+    await expect(rotate).toBeHidden();
+    await expect(key).not.toHaveText(firstKey!);
+
+    // 停用:输入账户名确认;之后只能查看,列表默认隐藏。
+    await drawer.getByRole('button', { name: 'Terminate' }).click();
+    const terminate = page.getByRole('dialog', { name: 'Terminate account' });
+    const terminateButton = terminate.getByRole('button', { name: 'Terminate' });
+    await expect(terminateButton).toBeDisabled();
+    await terminate.getByLabel('Type binance-lp-01 to confirm').fill('binance-lp-01');
+    await terminateButton.click();
+    await confirm.getByLabel('6-digit code').fill(await nextCode(page));
+    await confirm.getByRole('button', { name: 'Confirm' }).click();
+    await expect(drawer.locator('dt:text-is("Status") + dd')).toHaveText('Terminated');
+    await expect(drawer.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden();
+    await expect(page.getByText('No matching accounts.')).toBeVisible();
+    await page.getByLabel('Show terminated').check();
+    await expect(page.getByRole('row', { name: /binance-lp-01/ })).toContainText('Terminated');
   });
 
   await test.step('audit log: events, expand, filters in the URL', async () => {

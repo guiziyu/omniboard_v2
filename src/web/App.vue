@@ -3,7 +3,7 @@
 // 登录后是侧栏 + 顶栏 + 页面。激活页不需要登录。
 import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
-import { api, errorText, refreshSummary, session, summary, type User } from './api';
+import { api, atLeast, errorText, refreshSummary, session, summary, type User } from './api';
 import LoginView from './LoginView.vue';
 import EvidenceDrawer from './components/EvidenceDrawer.vue';
 import Icon from './components/Icon.vue';
@@ -24,6 +24,7 @@ function readRecoveryNotice() {
   }
 }
 const isAdmin = computed(() => session.user?.role === 'admin');
+const isTrader = computed(() => !!session.user && atLeast(session.user.role, 'trader'));
 const initials = computed(() =>
   (session.user?.name ?? '')
     .split(/\s+/)
@@ -84,6 +85,11 @@ async function logout() {
         </RouterLink>
         <RouterLink to="/w/internal/talent">Talent directory</RouterLink>
         <RouterLink to="/w/internal/connectors">Connectors</RouterLink>
+        <!-- 交易账户与 HFT 配置仅 trader / admin 可见(frontend-spec 12.12)。 -->
+        <template v-if="isTrader">
+          <p class="group">Trading</p>
+          <RouterLink to="/w/internal/accounts">Accounts</RouterLink>
+        </template>
         <!-- Data sources 所有角色可见,管理操作在页内限 admin(frontend-spec 2.3、9.5)。 -->
         <p class="group">Administration</p>
         <RouterLink to="/w/internal/sources">Data sources</RouterLink>

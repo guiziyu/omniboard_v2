@@ -2513,10 +2513,13 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 ### 12.7 交易账户(`/w/internal/accounts`)
 - 入口:侧栏新分组「Trading」下的「Accounts」,trader 与 admin 可见;其他角色访问返回 404,侧栏不显示。
 - **列表**:
-  - 列:Account(`account_name`,下方小字 `auth_id`)、Exchange、Status、Trading system、Other tags、IP whitelist(条数)、
+  - 列:Account(`account_name`,下方小字 `auth_id`)、Exchange、Status、Portfolio group、Other tags、IP whitelist(条数)、
     Owner、Key(指纹前 8 位,或「Entered before v2」)、Last change(来自审计,「—」表示 v2 之前)。
+  - HFT 按 Portfolio group 加可交易状态挑账户(quant 已删除 `TradingSystem` 标签,D3 作废),所以不再有
+    Trading system 列与字段。
   - Status 由标签派生,按优先级取第一个:Terminated → Read-only → Test → Initializing → Live。
-  - 筛选:Exchange、Status、Trading system、文本搜索(账户名、Owner)。默认隐藏 Terminated,开关「Show terminated」。
+  - 筛选:Exchange、Status、Portfolio group、文本搜索(账户名、Owner)。默认隐藏 Terminated,开关「Show terminated」。
+  - admin 在页头「Egress IPs」维护 `known_egress_ips`(每行一个 IP,可跟一句说明,如 `Neo EIP`)。
   - 没有任何密钥明文或部分明文出现在列表、详情、审计、日志中。
 - **详情抽屉**(点行打开,`?account=<auth_id>`):
   - 全部字段、标签原样 JSON(折叠,供核对)、`verified_auth_tags` 与更新时间(只读,Omnitra 写入;为空时不显示)。
@@ -2526,10 +2529,11 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 - **新建账户**(「Add account」,对话框):
   - Exchange:下拉,取值见 data-model 5.1。
   - Account name:必填,去掉首尾空白后非空;下方实时预览 `auth_id`。
-  - Trading system:Quant / HFT / None。
   - Account type:Live / Test / Read-only(单选,对应不加标签 / `Test` / `ReadOnly`)。
+  - Portfolio group:文本,可空;输入时建议已有账户与 HFT 配置里用过的分组。
   - Other tags:Unified、Low-latency account、Arbitrage account、Additional leverage risk limits、Initializing(复选);
-    VIP level、Market maker level(0–255 整数,可空);Portfolio group、Client name(文本,可空)。
+    VIP level、Market maker level(0–255 整数,可空);Client name(文本,可空)。
+  - `ListingTagBlocklist`、`WalletBlocked` 不在表单里,编辑时原样保留。
   - IP whitelist:每行一个 IPv4 / IPv6 地址;「Add known egress IP」按钮从 `known_egress_ips` 选择。Test 以外必填。
   - API key、API secret(必填)、Passphrase(可空):密码型输入框,`autocomplete=off`,不进草稿(2.12),提交后立即清空。
   - Link onboarding record(可选):列出 `resourceType=api_credentials`、venue 与所选 Exchange 匹配、尚未 granted 的
@@ -2537,14 +2541,16 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
     (proposal §5)。
   - Owner:文本,可空。
   - 保存 → 12.4 确认 → 成功后关闭并打开新账户的详情。
-- **Edit**:可改 Trading system、Account type、Other tags、IP whitelist、Owner;Exchange 与 Account name 只读。
-  保存前显示改前 / 改后对照(只列有变化的字段),再进入 12.4。
+- **Edit**:可改 Account type、Portfolio group、Other tags、IP whitelist、Owner;Exchange 与 Account name 只读。
+  保存前显示改前 / 改后对照(只列有变化的字段),再进入 12.4。打开后账户被别人改过时,保存返回 409
+  「This account has changed. Reopen it and try again.」。
 - **Rotate key**:输入新的 API key、secret、passphrase(三项一起替换);说明「The old key stops working for our
   systems immediately. Revoke it on the exchange after the new key is confirmed.」。成功后指纹更新。
 - **Terminate**:输入账户名确认;加 `Terminated` 标签。说明「Trading systems stop using this account on their next
   reload. This does not revoke the key on the exchange.」。
 - **校验**(前端与服务端相同,见 data-model 5.1):
-  - 可交易账户(不是 Test / Read-only / Terminated)必须选 Trading system。
+  - Portfolio group、VIP level、Market maker level、Client name 各最多一个(表单天然满足;DB 同样约束)。
+  - 非 Test 账户 IP whitelist 至少一行。
   - 重复 `auth_id` → 409「This account already exists.」。
   - 白名单某行不是 IP → 行内提示「Not a valid IP address.」。
   - DB 约束拒绝时显示「The database rejected this change: {约束名}」,并保持对话框内容不丢。

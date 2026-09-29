@@ -367,9 +367,12 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 
 **v2 另加的规则**(比 quant 解析更严,DB 约束同样执行,proposal §4「必须先堵的坑」):
 - 非 `Test` 账户 `ip_whitelist` 非空。
+- `PortfolioGroup`、`VipLevel`、`MarketMakerLevel`、`Client` 各最多一个(quant 的 `portfolio_group()` 只取第一个)。
 - `account_tags` 顶层标签只允许 `AccountTag` 已有的 14 种。结构复杂的 `ListingTagBlocklist`、`WalletBlocked`
   第一批不提供编辑,已有值原样保留。
-- `ip_whitelist` 的快捷填充来自 `app_setting.known_egress_ips`(如 Neo 的 EIP),由 admin 维护。
+- `ip_whitelist` 的快捷填充来自 `app_setting.known_egress_ips`(`[{ip, label}]`,如 Neo 的 EIP),由 admin 维护。
+- 实现:约束在 `db/owner/002_authentication_rules.sql`(owner 执行);2026-09-29 核对生产 29 行全部满足。
+  前端与服务端共用 `src/shared/accounts.ts` 的同一套规则。
 
 **写法**:
 - 新建:`INSERT`,`auth_id` 冲突时返回 409「This account already exists.」,不用 `ON CONFLICT DO UPDATE`。

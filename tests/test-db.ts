@@ -1,10 +1,10 @@
 import pg from 'pg';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { migrate } from '../src/server/migrate';
 import { openPool, type Pool } from '../src/server/db';
-// 每个测试文件一个新库(私有测试实例,scripts/test-db.sh)。顺序同生产:quant 形状 → owner 授权 → 迁移。
+// 每个测试文件一个新库(私有测试实例,scripts/test-db.sh)。顺序同生产:quant 形状 → owner 脚本(授权、约束)→ 迁移。
 // 应用连接用 omniboard_app 角色,权限测试因此是真实的。
 const serverUrl = () =>
   process.env.TEST_PG_URL ||
@@ -29,7 +29,8 @@ export async function createTestDb(): Promise<TestDb> {
   await setup.connect();
   try {
     await setup.query(readFileSync('tests/fixtures/quant-shapes.sql', 'utf8'));
-    await setup.query(readFileSync('db/owner/001_roles.sql', 'utf8'));
+    for (const file of readdirSync('db/owner').sort())
+      await setup.query(readFileSync(`db/owner/${file}`, 'utf8'));
   } finally {
     await setup.end();
   }
