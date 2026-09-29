@@ -35,7 +35,7 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 
 | 数据 | 位置 | v2 的权限 |
 |---|---|---|
-| 交易所 key、账户标签(`TradingSystem`、`Test`/`ReadOnly`/`Terminated`)、`ip_whitelist` | `management.authentication` | 写;密钥列只写不读。接管 DBeaver 手工维护 |
+| 交易所 key、账户标签(`PortfolioGroup`、`Test`/`ReadOnly`/`Terminated`)、`ip_whitelist` | `management.authentication` | 写;密钥列只写不读。接管 DBeaver 手工维护 |
 | HFT 额度 | `management.hft_config`、`hft_group_limit` | 写;进程启动时加载后冻结,重启才生效(§5) |
 | 验证结果 | `verification.v_*` 三个视图 | 只读 |
 | 机构、情报、合规、接入进度、任务、审计、HFT 重启请求 | 同库新 schema `omniboard` | 独占 |
@@ -86,7 +86,7 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 
 **必须先堵的坑**:authentication 快照只要有一行映射失败就整体拒收(quant `docs/context/database.md`
 §Current authoritative-read behavior),界面录错一行等于停掉所有钱包。要在 DB 上加约束或改成有类型的列
-(`account_tags` 合法且恰有一个 `TradingSystem`、非 Test 账户 `ip_whitelist` 非空等),让写入端与
+(`account_tags` 合法、非 Test 账户 `ip_whitelist` 非空等),让写入端与
 Rust 解析端同规则,坏行写不进去。运行时「整体拒收」的安全语义不变。`hft_config` 已有约束,照此核对。
 约束 DDL 由 owner 执行。
 
@@ -212,6 +212,8 @@ owner 已定:由 agent 经 API 逐条导入,顺便实测 agent 交互。
   `TradingSystem` 只对可交易账户要求恰好一个;第一批 HFT 页只给固定的「重启后生效」提示;通知走 AWS SES;
   迁移期允许写系统时间戳;只读角色不含身份与会话表。
 - 前端功能与交互写成 frontend-spec.md,之后按文档生成代码。
+- quant 删除 `TradingSystem` 账户标签(全系统只有 HFT 一个交易系统),D3 作废;HFT 成员只看
+  `PortfolioGroup` + 账户可交易。
 - 先在 Neo 上跑(只监听本机,SSH 隧道访问),再部署到正式机;应用须能在任何满足前置条件的 arm64 机器上跑。
 
 ## 11. 翻案条件

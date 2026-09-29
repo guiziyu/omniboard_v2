@@ -348,12 +348,11 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 | `exchange` | `ExchangeName` 的变体名,大小写精确:`Aster Binance BinanceUS Bitget Bithumb Bybit Coinbase Deribit Gate HTX Hyperliquid Kalshi KuCoin Lighter Okx Polymarket Upbit XT`(传统交易所与 `Unknown` 不开放;`CoinEx` 已退役,不开放新建) |
 | `auth_id` | 恒等于 `exchange || '_' || account_name`;v2 生成,不接受输入 |
 | `account_name` | 非空,前后无空白;创建后不可改(改名等于换身份) |
-| `account_tags` | 非 NULL;`Vec<AccountTag>` 的 serde JSON 文本,如 `["Test",{"TradingSystem":"Hft"},{"VipLevel":3}]` |
+| `account_tags` | 非 NULL;`Vec<AccountTag>` 的 serde JSON 文本,如 `["Test",{"PortfolioGroup":"lp-gavin-cross"},{"VipLevel":3}]` |
 | `ip_whitelist` | 每项能解析为 IPv4 或 IPv6 地址(`std::net::IpAddr`,不接受 CIDR) |
 | `api_pass` | 非 NULL;没有 passphrase 的交易所写 `''` |
 
 **v2 另加的规则**(比 quant 解析更严,DB 约束同样执行,proposal §4「必须先堵的坑」):
-- `TradingSystem` 标签最多一个;非 `Test`、非 `ReadOnly`、非 `Terminated` 的账户恰好一个(待裁决 D3)。
 - 非 `Test` 账户 `ip_whitelist` 非空。
 - `account_tags` 顶层标签只允许 `AccountTag` 已有的 14 种。结构复杂的 `ListingTagBlocklist`、`WalletBlocked`
   第一批不提供编辑,已有值原样保留。
@@ -408,7 +407,7 @@ CREATE UNIQUE INDEX one_open_restart_per_channel
 |---|---|---|
 | D1 | `omniboard` schema 归谁:proposal §4 写 `omniboard_app` 拥有,但同一行又写「无 DDL」 | 归 migrator,`omniboard_app` 只有 DML;改 proposal §4 |
 | D2 | `hft_config` 真值:quant 文档写 YAML 是真值、`sync_hft_config` 是唯一写入方;v2 直接改库后两者分叉,下一次 `sync --apply` 会覆盖界面改动 | v2 上线后库为真值;`sync_hft_config` 改为只读对比(或删除),YAML 退役;列入 proposal §7 quant 改动 |
-| D3 | 「恰有一个 `TradingSystem`」是否适用于 Test / ReadOnly / Terminated 账户(quant 只在交易入口要求,解析不要求) | 只对可交易账户要求恰好一个,其余最多一个 |
+| D3 | 「恰有一个 `TradingSystem`」是否适用于 Test / ReadOnly / Terminated 账户(quant 只在交易入口要求,解析不要求) | 作废(2026-09-29):quant 已删除 `TradingSystem` 标签 |
 | D4 | 第一批还没有 `hft-launcher`,不知道当前 HFT 进程的启动时间,无法判断「已改,重启后生效」 | 第一批只显示 `update_at` 和固定提示「改动在下次重启后生效」;第二批按 4.4 比较 |
 | D5 | 给 owner 发通知邮件的通道 | AWS SES,应用机器的实例角色授权;没配置时通知记为 `failed`,不阻塞操作 |
 | D6 | proposal §9 不迁移系统时间戳,导入后所有记录的 `updated_at` 都是导入时刻,「按更新时间排序」「最近变化」会失真 | 允许导入接口在 admin 令牌下写入 `created_at` / `updated_at`,仅迁移期开放。实现:同样适用于证据与观测的 `captured_at`;窗口是 `app_setting.import_open`,切换后 `npm run cli -- close-import` 关闭;窗口外或非 admin 令牌传入时间戳返回 403,不静默忽略 |
