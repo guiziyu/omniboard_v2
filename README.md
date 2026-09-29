@@ -19,7 +19,16 @@
 - `npm run migrate`:用 `QUANT_PG_MIGRATOR_URL` 执行 `db/migrations/`(schema `omniboard` 归 migrator,D1)。
 - `db/owner/`:涉及 quant 表的角色与授权,由 owner 手工执行,不自动跑。
 - 应用用 `QUANT_PG_URL`(`omniboard_app`),启动时结构版本不符就退出。
-- 证据原件暂存本地目录 `OMNIBOARD_EVIDENCE_DIR`(默认 `data/`,不进 git);S3 接入后改为私有桶。
+- 证据原件:设了 `OMNIBOARD_EVIDENCE_BUCKET`(和 `AWS_REGION`)就存 S3 私有桶,键 `evidence/<sha256>`;
+  否则存本地目录 `OMNIBOARD_EVIDENCE_DIR`(默认 `data/`,不进 git,只用于开发与测试,生产启动时会告警)。
+  - 凭据走 AWS SDK 默认链,生产用 EC2 实例角色,不放长期密钥。
+  - 实例角色需要:`s3:PutObject`、`s3:GetObject`(`arn:aws:s3:::<bucket>/evidence/*`),以及
+    `s3:ListBucket`(桶本身,可用 `s3:prefix` 限定为 `evidence/`)。没有 ListBucket 时,缺失的原件返回 403,
+    页面显示成内部错误而不是「原件缺失」。
+  - 桶的设置由 owner 做:禁止公开访问、开版本控制、默认加密(proposal §2)。应用不删除、不覆盖对象:
+    同内容用条件写入只写一次,上传带 SHA-256 校验和,读回再校验一次。
+  - 从本地目录切到 S3 前,先把已有原件传上去:`aws s3 sync data/evidence s3://<bucket>/evidence/`。
+  - `npm run selfcheck` 会写入并读回一个固定的探测原件,确认存储可写可读。
 - 迁移期结束:`npm run cli -- close-import`,此后导入接口不再接受系统时间戳(data-model D6)。
 
 ## 首个管理员
@@ -44,7 +53,7 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
   图谱人员名称到人才库的链接与返回时的状态恢复(7.7、7.8);机构选择器、机构对比与字段对比矩阵、
   Compliance 规则矩阵(2.15、4.5、4.6、5.8);情报收件箱、情报详情、关注机构与活动历史(8.1–8.4),
   任务详情的「Open source information」改为打开情报详情;数据来源页、CMC / CoinGecko 排行页采集、每日采集、
-  来源身份映射与机构选择器的「只查交易所」(9.4–9.7、2.15)。
+  来源身份映射与机构选择器的「只查交易所」(9.4–9.7、2.15);证据原件的 S3 存储(data-model §1)。
 - 所有模块标签页都已可用。
 - 数据来源:
   - 导入顺序:机构 → 别名 → `POST /api/import/source-links`(保留 v1 的来源档案与人工映射),然后才做第一次采集;
@@ -55,5 +64,5 @@ npm run cli -- bootstrap-admin --name <name> --email <email>
     frontend-spec「已排除」不移植。
 - `capital_scenarios`(data-model §3.3)在 v1 只有接口、没有页面,前端规格也没有对应界面,暂不移植;活动历史里
   v1 导入的 scenario 事件照常跳到 Capital Optimization 标签页。
-- 其他待办:S3 证据存储、SES 通知、交易账户与 HFT(12.7–12.9)、
+- 其他待办:SES 通知、交易账户与 HFT(12.7–12.9)、
   v2 新页面的中文与韩文译文。

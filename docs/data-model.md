@@ -23,8 +23,9 @@
   - `workspace_id` 全部去掉(proposal §8 不做多 workspace)。
   - 可见性:`visibility text CHECK (visibility IN ('team','admin'))`,创建后不可改(spec 0.2),由触发器拒绝 UPDATE 该列。
 - 单进程互斥:定时采集等后台任务用 `pg_try_advisory_lock`,取代 v1 PID 锁。
-- 证据原件:S3 私有桶,对象键 `evidence/<sha256>`;库里只存元数据(3.1)。S3 接入之前,开发与测试用本地目录
-  (`OMNIBOARD_EVIDENCE_DIR/evidence/<sha256>`),读取时校验 sha256。
+- 证据原件:S3 私有桶,对象键 `evidence/<sha256>`;库里只存元数据(3.1)。开发与测试用本地目录
+  (`OMNIBOARD_EVIDENCE_DIR/evidence/<sha256>`)。上传带 SHA-256 校验和、以 `If-None-Match: *` 条件写入
+  (同内容只写一次,版本化的桶里不堆重复版本),读取时校验 sha256。
 
 ## 2 数据库角色与授权
 

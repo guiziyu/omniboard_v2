@@ -5,7 +5,7 @@ import { id } from './db';
 import { problem, type Role } from './auth';
 import { randomToken, sha256 } from './crypto';
 // 证据(data-model §3.1,frontend-spec 5.10):原件按 sha256 内容寻址,库里只存元数据。
-/** 原件存储。生产用 S3 私有桶,键 evidence/<sha256>;开发与测试用本地目录。 */
+/** 原件存储。生产用 S3 私有桶(evidence-store.ts),键 evidence/<sha256>;开发与测试用本地目录。 */
 export interface EvidenceStore {
   put(sha: string, bytes: Buffer, contentType: string): Promise<void>;
   get(sha: string): Promise<Buffer>;
@@ -25,10 +25,21 @@ export function directoryStore(dir: string): EvidenceStore {
         if (error.code === 'ENOENT') problem(404, 'The original file is missing from storage.');
         throw error;
       });
-      if (sha256(bytes) !== sha) throw new Error(`Evidence ${sha} failed its integrity check.`);
-      return bytes;
+      return verified(sha, bytes);
     },
   };
+}
+/** 读回的原件必须与键里的 sha256 一致。 */
+export function verified(sha: string, bytes: Buffer): Buffer {
+  if (sha256(bytes) !== sha) throw new Error(`Evidence ${sha} failed its integrity check.`);
+  return bytes;
+}
+/** selfcheck:写入并读回一个固定的探测原件。内容寻址,重复写无害。 */
+export async function checkStore(store: EvidenceStore): Promise<void> {
+  const probe = Buffer.from('omniboard evidence store check\n');
+  const sha = sha256(probe);
+  await store.put(sha, probe, 'text/plain');
+  await store.get(sha);
 }
 export type Visibility = 'team' | 'admin';
 export type EvidenceInfo = {
