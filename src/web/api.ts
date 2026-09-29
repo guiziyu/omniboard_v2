@@ -1,6 +1,13 @@
 import { reactive } from 'vue';
 export const roles = ['reader', 'editor', 'trader', 'admin'] as const;
 export type Role = (typeof roles)[number];
+/** 角色的显示名(随界面语言翻译,frontend-spec 12.1)。 */
+export const roleLabels: Record<Role, string> = {
+  reader: 'Reader',
+  editor: 'Editor',
+  trader: 'Trader',
+  admin: 'Admin',
+};
 export const atLeast = (role: Role, min: Role) => roles.indexOf(role) >= roles.indexOf(min);
 export type User = { id: string; name: string; email: string; role: Role; locale: string };
 /** 当前登录用户;任何接口返回 401 时清空,界面回到登录页且 URL 不变(frontend-spec 2.1)。 */

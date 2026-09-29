@@ -15,6 +15,9 @@ import identities from './identities';
 import roadmap from './roadmap';
 import connectivity from './connectivity';
 import connectors from './connectors';
+import access from './access';
+import trading from './trading';
+import workspace from './workspace';
 export type Message = readonly [english: string, chinese: string, korean: string];
 export const messages: readonly Message[] = [
   ...common,
@@ -34,4 +37,7 @@ export const messages: readonly Message[] = [
   ...workNavigation,
   ...personProfiles,
   ...positionDrivers,
+  ...access,
+  ...trading,
+  ...workspace,
 ];

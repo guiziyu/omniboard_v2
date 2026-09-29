@@ -215,6 +215,7 @@
 - 以下内容不翻译：CoinGecko、CoinMarketCap、机构名、人名、产品品牌和技术标识；用户录入的标题、笔记、原文、历史；已被人工改过的标准任务。缺少译文时回退到英文原文，不调用外部翻译服务。
 - 插值：占位符 `{0}`、`{1}` 可以按语言调整顺序；插入的用户值原样保留，即使值里含有 `{1}`、`<…>` 也不做二次替换。
 - 来源：tests/localization.test.ts（译文完整性、占位符、注册表覆盖、组件字面量覆盖、标准任务显示本地化但不改存储值）；docs/localization.md；src/web/i18n.ts；src/shared/localization.ts
+- v2 实现:词典在 `src/locales/`(v2 新页面在 `access.ts`、`trading.ts`、`workspace.ts`)。`tests/localization.test.ts` 另查模板里没有未经 `tr()` 的英文,v2 新接口(登录、成员、令牌、交易账户、HFT)的错误信息有译文;从 v1 移植来的接口错误信息与 v1 一样只有英文。
 
 ### 2.11 最近筛选自动记忆（机构目录、人才目录、工作台）
 - 入口：进入 `/w/internal/organizations`、`/w/internal/talent`、`/w/internal/work`。嵌入在机构 Onboarding 里的工作台不参与记忆。

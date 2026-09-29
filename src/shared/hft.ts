@@ -105,7 +105,7 @@ export function fieldProblem(field: HftField, s: HftSettings): string | null {
 }
 export function groupLimitProblem(limit: GroupLimit, others: GroupLimit[]): string | null {
   const name = predictionGroupProblem(limit.predictionGroup);
-  if (name) return `Prediction group: ${name}`;
+  if (name) return name;
   if (others.some((o) => o.predictionGroup === limit.predictionGroup))
     return 'This prediction group is listed twice.';
   if (!positive(limit.maxGrossExposureUsd)) return 'Max gross exposure must be greater than 0.';
@@ -131,17 +131,23 @@ export function settingsProblem(s: HftSettings): string | null {
 export const sortLimits = (limits: GroupLimit[]) =>
   [...limits].sort((a, b) => (a.predictionGroup < b.predictionGroup ? -1 : 1));
 
-/** 改前 / 改后对照(12.8 保存):组合级字段与组覆盖的新增、删除、修改。 */
-export type HftChange = { field: string; before: string; after: string };
+/**
+ * 改前 / 改后对照(12.8 保存):组合级字段与组覆盖的新增、删除、修改。`field` 是界面文案的英文键,
+ * `values` 是它的插值(组名),显示时交给 tr()。组覆盖的值写成「gross / |net|」。
+ */
+export type HftChange = { field: string; values: string[]; before: string; after: string };
 export function hftChanges(before: HftSettings, after: HftSettings): HftChange[] {
   const text = (v: string | number) => (typeof v === 'number' ? decimalText(v) : v);
   const rows: HftChange[] = (Object.keys(fieldLabels) as HftField[])
     .filter((f) => before[f] !== after[f])
-    .map((f) => ({ field: fieldLabels[f], before: text(before[f]), after: text(after[f]) }));
+    .map((f) => ({
+      field: fieldLabels[f],
+      values: [],
+      before: text(before[f]),
+      after: text(after[f]),
+    }));
   const limitText = (l: GroupLimit | undefined) =>
-    l
-      ? `gross ${decimalText(l.maxGrossExposureUsd)} · |net| ${decimalText(l.maxAbsNetExposureUsd)}`
-      : '—';
+    l ? `${decimalText(l.maxGrossExposureUsd)} / ${decimalText(l.maxAbsNetExposureUsd)}` : '—';
   const groups = [
     ...new Set([...before.groupLimits, ...after.groupLimits].map((l) => l.predictionGroup)),
   ].sort();
@@ -149,7 +155,12 @@ export function hftChanges(before: HftSettings, after: HftSettings): HftChange[]
     const a = before.groupLimits.find((l) => l.predictionGroup === group);
     const b = after.groupLimits.find((l) => l.predictionGroup === group);
     if (limitText(a) !== limitText(b))
-      rows.push({ field: `Group ${group}`, before: limitText(a), after: limitText(b) });
+      rows.push({
+        field: 'Group {0} (gross / |net| USD)',
+        values: [group],
+        before: limitText(a),
+        after: limitText(b),
+      });
   }
   return rows;
 }

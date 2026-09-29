@@ -5,6 +5,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { api, errorText, session } from '../api';
 import { formatTime } from '../format';
+import { tr } from '../i18n';
+import { auditActionLabels } from '../../shared/audit';
 import AppDialog from '../components/AppDialog.vue';
 import AccountForm, { type AccountDraft, type Secrets } from '../components/AccountForm.vue';
 import {
@@ -64,15 +66,16 @@ function otherTags(account: { tags: AccountTag[]; status: AccountStatus }): stri
     if (['Terminated', 'ReadOnly', 'Test', 'PortfolioGroup'].includes(name)) return [];
     if (name === 'Initializing' && account.status === 'initializing') return [];
     const value = typeof tag === 'object' ? tag[name] : undefined;
-    if (name === 'VipLevel') return [`VIP ${value}`];
-    if (name === 'MarketMakerLevel') return [`Market maker ${value}`];
-    if (name === 'Client') return [`Client: ${(value as { client_name: string }).client_name}`];
-    if (name === 'WalletBlocked') return ['Wallet blocked'];
-    if (name === 'ListingTagBlocklist') return ['Listing blocklist'];
-    return [labels[name] ?? name];
+    if (name === 'VipLevel') return [tr('VIP {0}', [value])];
+    if (name === 'MarketMakerLevel') return [tr('Market maker {0}', [value])];
+    if (name === 'Client')
+      return [tr('Client: {0}', [(value as { client_name: string }).client_name])];
+    if (name === 'WalletBlocked') return [tr('Wallet blocked')];
+    if (name === 'ListingTagBlocklist') return [tr('Listing blocklist')];
+    return [labels[name] ? tr(labels[name]) : name];
   });
 }
-const keyText = (fp: string | null) => (fp ? fp.slice(0, 8) : 'Entered before v2');
+const keyText = (fp: string | null) => (fp ? fp.slice(0, 8) : tr('Entered before v2'));
 
 // ---- 详情抽屉(?account=)----
 const detail = ref<AccountDetail | null>(null);
@@ -98,14 +101,6 @@ onMounted(async () => {
   await load();
   await openDetail();
 });
-const actionLabel: Record<string, string> = {
-  'auth.create': 'Account created',
-  'auth.update_tags': 'Tags changed',
-  'auth.update_whitelist': 'IP whitelist changed',
-  'auth.update_owner': 'Owner changed',
-  'auth.rotate_key': 'API key rotated',
-  'auth.terminate': 'Account terminated',
-};
 const compact = (value: unknown) =>
   value === null || value === undefined ? '—' : JSON.stringify(value);
 
@@ -182,22 +177,24 @@ function reviewEdit(draft: AccountDraft) {
       ? '—'
       : typeof v === 'boolean'
         ? v
-          ? 'Yes'
-          : 'No'
-        : (types[String(v)] ?? String(v));
+          ? tr('Yes')
+          : tr('No')
+        : types[String(v)]
+          ? tr(types[String(v)]!)
+          : String(v);
   const rows = settingLabels
     .filter(([key]) => before[key] !== draft.settings[key])
     .map(([key, field]) => ({
-      field,
+      field: tr(field),
       before: text(before[key]),
       after: text(draft.settings[key]),
     }));
   const ipsBefore = (account.ipWhitelist ?? []).join(', ');
   const ipsAfter = [...new Set(draft.ipWhitelist)].join(', ');
   if (ipsBefore !== ipsAfter)
-    rows.push({ field: 'IP whitelist', before: ipsBefore || '—', after: ipsAfter || '—' });
+    rows.push({ field: tr('IP whitelist'), before: ipsBefore || '—', after: ipsAfter || '—' });
   if ((account.owner ?? '') !== draft.owner)
-    rows.push({ field: 'Owner', before: text(account.owner), after: text(draft.owner) });
+    rows.push({ field: tr('Owner'), before: text(account.owner), after: text(draft.owner) });
   if (!rows.length) {
     editError.value = 'Nothing has changed.';
     return;
@@ -312,15 +309,20 @@ async function saveEgress() {
   <section class="page wide">
     <header class="page-head">
       <div>
-        <p class="eyebrow">TRADING</p>
-        <h1>Accounts</h1>
+        <p class="eyebrow">{{ tr('TRADING') }}</p>
+        <h1>{{ tr('Accounts') }}</h1>
         <p>
-          Exchange accounts and API keys used by the trading systems. Keys are write-only: they are
-          never shown again after saving.
+          {{
+            tr(
+              'Exchange accounts and API keys used by the trading systems. Keys are write-only: they are never shown again after saving.',
+            )
+          }}
         </p>
       </div>
       <div v-if="!loadError" class="actions">
-        <button v-if="isAdmin" type="button" class="ghost" @click="openEgress">Egress IPs</button>
+        <button v-if="isAdmin" type="button" class="ghost" @click="openEgress">
+          {{ tr('Egress IPs') }}
+        </button>
         <button
           type="button"
           @click="
@@ -329,58 +331,58 @@ async function saveEgress() {
             adding = true;
           "
         >
-          Add account
+          {{ tr('Add account') }}
         </button>
       </div>
     </header>
-    <p v-if="loadError" class="error" role="alert">{{ loadError }}</p>
+    <p v-if="loadError" class="error" role="alert">{{ tr(loadError) }}</p>
     <template v-else>
       <div class="filters">
         <label>
-          Exchange
+          {{ tr('Exchange') }}
           <select v-model="filters.exchange">
-            <option value="">All exchanges</option>
+            <option value="">{{ tr('All exchanges') }}</option>
             <option v-for="x in accountExchanges" :key="x" :value="x">{{ x }}</option>
           </select>
         </label>
         <label>
-          Status
+          {{ tr('Status') }}
           <select v-model="filters.status">
-            <option value="">All statuses</option>
+            <option value="">{{ tr('All statuses') }}</option>
             <option v-for="[value, label] in statusChoices" :key="value" :value="value">
-              {{ label }}
+              {{ tr(label) }}
             </option>
           </select>
         </label>
         <label>
-          Portfolio group
+          {{ tr('Portfolio group') }}
           <select v-model="filters.group">
-            <option value="">All groups</option>
+            <option value="">{{ tr('All groups') }}</option>
             <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
           </select>
         </label>
         <label>
-          Search
-          <input v-model="filters.q" placeholder="Account or owner" maxlength="100" />
+          {{ tr('Search') }}
+          <input v-model="filters.q" :placeholder="tr('Account or owner')" maxlength="100" />
         </label>
         <label class="choice">
           <input v-model="filters.showTerminated" type="checkbox" />
-          <span>Show terminated</span>
+          <span>{{ tr('Show terminated') }}</span>
         </label>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Account</th>
-              <th>Exchange</th>
-              <th>Status</th>
-              <th>Portfolio group</th>
-              <th>Other tags</th>
-              <th>IP whitelist</th>
-              <th>Owner</th>
-              <th>Key</th>
-              <th>Last change</th>
+              <th>{{ tr('Account') }}</th>
+              <th>{{ tr('Exchange') }}</th>
+              <th>{{ tr('Status') }}</th>
+              <th>{{ tr('Portfolio group') }}</th>
+              <th>{{ tr('Other tags') }}</th>
+              <th>{{ tr('IP whitelist') }}</th>
+              <th>{{ tr('Owner') }}</th>
+              <th>{{ tr('Key') }}</th>
+              <th>{{ tr('Last change') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -390,7 +392,7 @@ async function saveEgress() {
               </td>
               <td>{{ a.exchange }}</td>
               <td>
-                {{ a.tagsError ? 'Invalid tags' : statusLabel[a.status] }}
+                {{ a.tagsError ? tr('Invalid tags') : tr(statusLabel[a.status]) }}
               </td>
               <td>{{ groupOf(a) || '—' }}</td>
               <td>{{ otherTags(a).join(', ') || '—' }}</td>
@@ -404,45 +406,49 @@ async function saveEgress() {
             </tr>
           </tbody>
         </table>
-        <p v-if="!shown.length">No matching accounts.</p>
+        <p v-if="!shown.length">{{ tr('No matching accounts.') }}</p>
       </div>
     </template>
 
     <AppDialog
       v-if="route.query.account && (detail || detailError)"
       drawer
-      :title="detail?.accountName ?? 'Account'"
+      :title="detail?.accountName ?? tr('Account')"
       :eyebrow="detail?.authId"
       @close="show(null)"
     >
-      <p v-if="detailError" class="error" role="alert">{{ detailError }}</p>
+      <p v-if="detailError" class="error" role="alert">{{ tr(detailError) }}</p>
       <template v-else-if="detail">
         <dl class="decision-facts">
-          <dt>Exchange</dt>
+          <dt>{{ tr('Exchange') }}</dt>
           <dd>{{ detail.exchange }}</dd>
-          <dt>Status</dt>
+          <dt>{{ tr('Status') }}</dt>
           <dd>
             {{
-              detail.tagsError ? `Invalid tags: ${detail.tagsError}` : statusLabel[detail.status]
+              detail.tagsError
+                ? tr('Invalid tags: {0}', [detail.tagsError])
+                : tr(statusLabel[detail.status])
             }}
           </dd>
-          <dt>Portfolio group</dt>
+          <dt>{{ tr('Portfolio group') }}</dt>
           <dd>{{ groupOf(detail) || '—' }}</dd>
-          <dt>Other tags</dt>
+          <dt>{{ tr('Other tags') }}</dt>
           <dd>{{ otherTags(detail).join(', ') || '—' }}</dd>
-          <dt>IP whitelist</dt>
+          <dt>{{ tr('IP whitelist') }}</dt>
           <dd>{{ detail.ipWhitelist?.join(', ') || '—' }}</dd>
-          <dt>Owner</dt>
+          <dt>{{ tr('Owner') }}</dt>
           <dd>{{ detail.owner || '—' }}</dd>
-          <dt>Key</dt>
+          <dt>{{ tr('Key') }}</dt>
           <dd>{{ keyText(detail.keyFingerprint) }}</dd>
         </dl>
         <details>
-          <summary>Raw tags</summary>
+          <summary>{{ tr('Raw tags') }}</summary>
           <pre>{{ detail.accountTags }}</pre>
         </details>
         <details v-if="detail.verifiedAuthTags">
-          <summary>Verified tags · {{ formatTime(detail.verifiedAt, locale) }}</summary>
+          <summary>
+            {{ tr('Verified tags · {0}', [formatTime(detail.verifiedAt, locale)]) }}
+          </summary>
           <pre>{{ detail.verifiedAuthTags }}</pre>
         </details>
         <div v-if="detail.status !== 'terminated'" class="actions wrap">
@@ -455,7 +461,7 @@ async function saveEgress() {
               editing = detail;
             "
           >
-            Edit
+            {{ tr('Edit') }}
           </button>
           <button
             type="button"
@@ -466,7 +472,7 @@ async function saveEgress() {
               rotating = true;
             "
           >
-            Rotate key
+            {{ tr('Rotate key') }}
           </button>
           <button
             type="button"
@@ -477,11 +483,11 @@ async function saveEgress() {
               terminating = true;
             "
           >
-            Terminate
+            {{ tr('Terminate') }}
           </button>
         </div>
-        <h3>Onboarding records</h3>
-        <p v-if="!detail.onboarding.length">No onboarding record uses this account.</p>
+        <h3>{{ tr('Onboarding records') }}</h3>
+        <p v-if="!detail.onboarding.length">{{ tr('No onboarding record uses this account.') }}</p>
         <ul v-else>
           <li v-for="o in detail.onboarding" :key="o.recordId">
             <RouterLink :to="`/w/internal/organizations/${o.organizationId}/onboarding`">
@@ -489,22 +495,22 @@ async function saveEgress() {
             </RouterLink>
           </li>
         </ul>
-        <h3>History</h3>
-        <p v-if="!detail.audit.length">No changes since v2.</p>
+        <h3>{{ tr('History') }}</h3>
+        <p v-if="!detail.audit.length">{{ tr('No changes since v2.') }}</p>
         <table v-else>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Change</th>
+              <th>{{ tr('Time') }}</th>
+              <th>{{ tr('Actor') }}</th>
+              <th>{{ tr('Action') }}</th>
+              <th>{{ tr('Change') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="e in detail.audit" :key="e.id">
               <td>{{ formatTime(e.at, locale) }}</td>
               <td>{{ e.actorName }}</td>
-              <td>{{ actionLabel[e.action] ?? e.action }}</td>
+              <td>{{ tr(auditActionLabels[e.action] ?? e.action) }}</td>
               <td>
                 <small v-if="e.before !== null">{{ compact(e.before) }} → </small>
                 <small>{{ compact(e.after) }}</small>
@@ -515,7 +521,7 @@ async function saveEgress() {
       </template>
     </AppDialog>
 
-    <AppDialog v-if="adding" title="Add account" wide :busy="busy" @close="adding = false">
+    <AppDialog v-if="adding" :title="tr('Add account')" wide :busy="busy" @close="adding = false">
       <AccountForm
         v-model:secrets="secrets"
         :busy="busy"
@@ -527,7 +533,7 @@ async function saveEgress() {
 
     <AppDialog
       v-if="editing && !review"
-      :title="`Edit ${editing.accountName}`"
+      :title="tr('Edit {0}', [editing.accountName])"
       wide
       @close="editing = null"
     >
@@ -540,13 +546,13 @@ async function saveEgress() {
         @close="editing = null"
       />
     </AppDialog>
-    <AppDialog v-if="review" title="Review changes" :busy="busy" @close="review = null">
+    <AppDialog v-if="review" :title="tr('Review changes')" :busy="busy" @close="review = null">
       <table>
         <thead>
           <tr>
-            <th>Field</th>
-            <th>Before</th>
-            <th>After</th>
+            <th>{{ tr('Field') }}</th>
+            <th>{{ tr('Before') }}</th>
+            <th>{{ tr('After') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -558,20 +564,30 @@ async function saveEgress() {
         </tbody>
       </table>
       <div class="actions">
-        <button type="button" class="ghost" :disabled="busy" @click="review = null">Back</button>
-        <button type="button" :disabled="busy" @click="saveEdit">Save changes</button>
+        <button type="button" class="ghost" :disabled="busy" @click="review = null">
+          {{ tr('Back') }}
+        </button>
+        <button type="button" :disabled="busy" @click="saveEdit">{{ tr('Save changes') }}</button>
       </div>
     </AppDialog>
 
-    <AppDialog v-if="rotating && detail" title="Rotate key" :busy="busy" @close="rotating = false">
+    <AppDialog
+      v-if="rotating && detail"
+      :title="tr('Rotate key')"
+      :busy="busy"
+      @close="rotating = false"
+    >
       <form autocomplete="off" @submit.prevent="rotate">
         <p>
-          The old key stops working for our systems immediately. Revoke it on the exchange after the
-          new key is confirmed.
+          {{
+            tr(
+              'The old key stops working for our systems immediately. Revoke it on the exchange after the new key is confirmed.',
+            )
+          }}
         </p>
-        <label for="r-key">New API key</label>
+        <label for="r-key">{{ tr('New API key') }}</label>
         <input id="r-key" v-model="secrets.apiKey" type="password" autocomplete="off" required />
-        <label for="r-secret">New API secret</label>
+        <label for="r-secret">{{ tr('New API secret') }}</label>
         <input
           id="r-secret"
           v-model="secrets.apiSecret"
@@ -579,42 +595,45 @@ async function saveEgress() {
           autocomplete="off"
           required
         />
-        <label for="r-pass">New passphrase</label>
+        <label for="r-pass">{{ tr('New passphrase') }}</label>
         <input id="r-pass" v-model="secrets.apiPass" type="password" autocomplete="off" />
-        <p v-if="rotateError" class="error" role="alert">{{ rotateError }}</p>
+        <p v-if="rotateError" class="error" role="alert">{{ tr(rotateError) }}</p>
         <div class="actions">
           <button type="button" class="ghost" :disabled="busy" @click="rotating = false">
-            Cancel
+            {{ tr('Cancel') }}
           </button>
-          <button type="submit" :disabled="busy">Rotate key</button>
+          <button type="submit" :disabled="busy">{{ tr('Rotate key') }}</button>
         </div>
       </form>
     </AppDialog>
 
     <AppDialog
       v-if="terminating && detail"
-      title="Terminate account"
+      :title="tr('Terminate account')"
       :busy="busy"
       @close="terminating = false"
     >
       <form @submit.prevent="terminate">
         <p>
-          Trading systems stop using this account on their next reload. This does not revoke the key
-          on the exchange.
+          {{
+            tr(
+              'Trading systems stop using this account on their next reload. This does not revoke the key on the exchange.',
+            )
+          }}
         </p>
-        <label for="t-name">Type {{ detail.accountName }} to confirm</label>
+        <label for="t-name">{{ tr('Type {0} to confirm', [detail.accountName]) }}</label>
         <input id="t-name" v-model="terminateName" autocomplete="off" required />
-        <p v-if="terminateError" class="error" role="alert">{{ terminateError }}</p>
+        <p v-if="terminateError" class="error" role="alert">{{ tr(terminateError) }}</p>
         <div class="actions">
           <button type="button" class="ghost" :disabled="busy" @click="terminating = false">
-            Cancel
+            {{ tr('Cancel') }}
           </button>
           <button
             type="submit"
             class="danger"
             :disabled="busy || terminateName !== detail.accountName"
           >
-            Terminate
+            {{ tr('Terminate') }}
           </button>
         </div>
       </form>
@@ -622,19 +641,19 @@ async function saveEgress() {
 
     <AppDialog
       v-if="egressOpen"
-      title="Known egress IPs"
+      :title="tr('Known egress IPs')"
       :busy="egressBusy"
       @close="egressOpen = false"
     >
       <form @submit.prevent="saveEgress">
-        <label for="e-ips">One IP per line, optionally followed by a note</label>
+        <label for="e-ips">{{ tr('One IP per line, optionally followed by a note') }}</label>
         <textarea id="e-ips" v-model="egressText" rows="5" placeholder="52.1.2.3 Neo EIP" />
-        <p v-if="egressError" class="error" role="alert">{{ egressError }}</p>
+        <p v-if="egressError" class="error" role="alert">{{ tr(egressError) }}</p>
         <div class="actions">
           <button type="button" class="ghost" :disabled="egressBusy" @click="egressOpen = false">
-            Cancel
+            {{ tr('Cancel') }}
           </button>
-          <button type="submit" :disabled="egressBusy">Save</button>
+          <button type="submit" :disabled="egressBusy">{{ tr('Save') }}</button>
         </div>
       </form>
     </AppDialog>

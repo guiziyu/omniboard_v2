@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 机构标志(frontend-spec 2.16):有地址时显示图片(懒加载),没有或加载失败时显示名称首字母。
 import { ref, watch } from 'vue';
+import { tr } from '../i18n';
 const props = defineProps<{ name: string; src?: string; small?: boolean }>();
 const failed = ref(false);
 watch(
@@ -13,7 +14,7 @@ watch(
     <img
       v-if="src && !failed"
       :src="src"
-      :alt="`${name} logo`"
+      :alt="tr('{0} logo', [name])"
       loading="lazy"
       @error="failed = true"
     />

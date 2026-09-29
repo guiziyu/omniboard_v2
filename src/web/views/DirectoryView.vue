@@ -5,6 +5,7 @@ import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { api, atLeast, errorText, refreshSummary, session } from '../api';
 import { displayMetric, formatTime } from '../format';
+import { tr } from '../i18n';
 import { isTag, tagDefinitions, tagIds, type OrganizationTag } from '../../shared/tags';
 import {
   columnsFor,
@@ -293,16 +294,20 @@ async function createOrganization() {
   <section class="page wide">
     <header class="page-head">
       <div>
-        <h1>Organizations</h1>
-        <p>Rank, research and maintain your counterparties.</p>
+        <h1>{{ tr('Organizations') }}</h1>
+        <p>{{ tr('Rank, research and maintain your counterparties.') }}</p>
       </div>
-      <button v-if="canEdit" type="button" @click="creating = true">Add organization</button>
+      <button v-if="canEdit" type="button" @click="creating = true">
+        {{ tr('Add organization') }}
+      </button>
     </header>
 
     <div class="catalog-card">
       <div class="catalog-row">
-        <div class="tag-filters" role="group" aria-label="Organization types">
-          <button type="button" :aria-pressed="!activeTag" @click="chooseTag('')">All</button>
+        <div class="tag-filters" role="group" :aria-label="tr('Organization types')">
+          <button type="button" :aria-pressed="!activeTag" @click="chooseTag('')">
+            {{ tr('All') }}
+          </button>
           <button
             v-for="key in tagIds"
             :key="key"
@@ -310,12 +315,17 @@ async function createOrganization() {
             :aria-pressed="activeTag === key"
             @click="chooseTag(key)"
           >
-            {{ tagDefinitions[key].plural }}
+            {{ tr(tagDefinitions[key].plural) }}
           </button>
         </div>
         <div class="directory-total">
-          <span>{{ loading ? '…' : total }} organizations</span>
-          <button type="button" class="ghost" aria-label="Refresh organizations" @click="load">
+          <span>{{ tr('{0} organizations', [loading ? '…' : total]) }}</span>
+          <button
+            type="button"
+            class="ghost"
+            :aria-label="tr('Refresh organizations')"
+            @click="load"
+          >
             ↻
           </button>
         </div>
@@ -326,15 +336,15 @@ async function createOrganization() {
           v-model="q"
           class="search"
           type="search"
-          placeholder="Search organizations…"
-          aria-label="Search organizations"
+          :placeholder="tr('Search organizations…')"
+          :aria-label="tr('Search organizations')"
           maxlength="200"
         />
         <label class="inline-control">
-          Rank by
+          {{ tr('Rank by') }}
           <select
             :value="sort"
-            aria-label="Rank by"
+            :aria-label="tr('Rank by')"
             @change="
               update({
                 sort: ($event.target as HTMLSelectElement).value,
@@ -344,17 +354,17 @@ async function createOrganization() {
             "
           >
             <option v-for="column in available" :key="column.id" :value="column.id">
-              {{ column.title }}
+              {{ tr(column.title) }}
             </option>
-            <option value="name">Name</option>
-            <option value="updated">Date added</option>
+            <option value="name">{{ tr('Name') }}</option>
+            <option value="updated">{{ tr('Date added') }}</option>
           </select>
         </label>
         <button type="button" class="link" @click="router.replace({ query: {} })">
-          Reset filters
+          {{ tr('Reset filters') }}
         </button>
         <details ref="columnPicker" class="column-picker">
-          <summary>Columns</summary>
+          <summary>{{ tr('Columns') }}</summary>
           <div class="column-menu">
             <div v-for="column in available" :key="column.id" class="column-choice">
               <label>
@@ -364,8 +374,8 @@ async function createOrganization() {
                   :disabled="column.id === sort"
                   @change="toggleColumn(column)"
                 />
-                {{ column.title }}
-                <small v-if="column.id === sort">ranking</small>
+                {{ tr(column.title) }}
+                <small v-if="column.id === sort">{{ tr('ranking') }}</small>
               </label>
               <ColumnHelp
                 :title="column.title"
@@ -378,46 +388,51 @@ async function createOrganization() {
       </div>
 
       <div class="catalog-row context">
-        <strong>{{ sortColumn?.title ?? (sort === 'name' ? 'Name' : 'Date added') }}</strong>
+        <strong>{{ tr(sortColumn?.title ?? (sort === 'name' ? 'Name' : 'Date added')) }}</strong>
         <select
           v-if="sortColumn && sortColumn.units.length > 1"
           :value="unit"
-          aria-label="Ranking unit"
+          :aria-label="tr('Ranking unit')"
           @change="update({ unit: ($event.target as HTMLSelectElement).value })"
         >
           <option v-for="u in sortColumn.units" :key="u" :value="u">{{ u }}</option>
         </select>
         <span v-else-if="unit" class="hint">{{ unit }}</span>
         <label v-if="visible.some((c) => c.period === 'annual')" class="inline-control">
-          Year
+          {{ tr('Year') }}
           <select
             :value="year"
-            aria-label="Reporting year"
+            :aria-label="tr('Reporting year')"
             @change="update({ year: ($event.target as HTMLSelectElement).value })"
           >
             <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
           </select>
         </label>
-        <button type="button" class="link" @click="method = true">ⓘ Ranking basis</button>
+        <button type="button" class="link" @click="method = true">
+          ⓘ {{ tr('Ranking basis') }}
+        </button>
       </div>
 
       <p v-if="approximateRanking" class="caveat">
-        Sorted by recorded bounds or estimates, not confirmed market size. Open a value to check
-        coverage and definitions.
+        {{
+          tr(
+            'Sorted by recorded bounds or estimates, not confirmed market size. Open a value to check coverage and definitions.',
+          )
+        }}
       </p>
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <p v-if="loading" class="hint">Loading rankings…</p>
+      <p v-if="error" class="error" role="alert">{{ tr(error) }}</p>
+      <p v-if="loading" class="hint">{{ tr('Loading rankings…') }}</p>
       <div v-else class="table-wrap">
         <table class="ranking">
           <thead>
             <tr>
-              <th class="rank-cell">{{ approximateRanking ? 'Order' : 'Rank' }}</th>
+              <th class="rank-cell">{{ approximateRanking ? tr('Order') : tr('Rank') }}</th>
               <th :aria-sort="ariaSort('name')">
                 <button type="button" class="sort" @click="rank('name')">
-                  Organization <span>{{ arrow('name') }}</span>
+                  {{ tr('Organization') }} <span>{{ arrow('name') }}</span>
                 </button>
               </th>
-              <th v-if="showTagColumn">Tags</th>
+              <th v-if="showTagColumn">{{ tr('Tags') }}</th>
               <th
                 v-for="column in visible"
                 :key="column.id"
@@ -426,7 +441,7 @@ async function createOrganization() {
               >
                 <div class="column-heading">
                   <button type="button" class="sort" @click="rank(column.id)">
-                    {{ column.title }} <span>{{ arrow(column.id) }}</span>
+                    {{ tr(column.title) }} <span>{{ arrow(column.id) }}</span>
                   </button>
                   <ColumnHelp
                     :title="column.title"
@@ -441,10 +456,12 @@ async function createOrganization() {
               </th>
               <th v-if="sort === 'updated'" :aria-sort="ariaSort('updated')">
                 <button type="button" class="sort" @click="rank('updated')">
-                  Date added <span>{{ arrow('updated') }}</span>
+                  {{ tr('Date added') }} <span>{{ arrow('updated') }}</span>
                 </button>
               </th>
-              <th><span class="visually-hidden">Open</span></th>
+              <th>
+                <span class="visually-hidden">{{ tr('Open') }}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -455,7 +472,7 @@ async function createOrganization() {
                   type="button"
                   class="rank-number"
                   :class="{ podium: org.rank <= 3 && !approximateRanking }"
-                  :aria-label="`Explain rank ${org.rank} for ${org.name}`"
+                  :aria-label="tr('Explain rank {0} for {1}', [org.rank, org.name])"
                   @click="explore(org, sortColumn)"
                 >
                   {{ org.rank }}
@@ -475,7 +492,7 @@ async function createOrganization() {
               </td>
               <td v-if="showTagColumn">
                 <span v-for="t in extraTags(org)" :key="t" class="tag">
-                  {{ tagDefinitions[t].title }}
+                  {{ tr(tagDefinitions[t].title) }}
                 </span>
               </td>
               <td
@@ -489,8 +506,8 @@ async function createOrganization() {
                   type="button"
                   class="metric-cell"
                   :class="{ missing: !org.values[column.id] }"
-                  :aria-label="`Inspect ${column.title} for ${org.name}`"
-                  :title="org.values[column.id]?.value ?? 'No matching observation'"
+                  :aria-label="tr('Inspect {0} for {1}', [tr(column.title), org.name])"
+                  :title="org.values[column.id]?.value ?? tr('No matching observation')"
                   @click="explore(org, column)"
                 >
                   {{ displayMetric(org.values[column.id], true) }}
@@ -499,7 +516,7 @@ async function createOrganization() {
                   v-else
                   type="button"
                   class="link"
-                  :aria-label="`Open records for ${org.name}`"
+                  :aria-label="tr('Open records for {0}', [org.name])"
                   @click="open(org)"
                 >
                   {{ org.recordCount }}
@@ -510,7 +527,7 @@ async function createOrganization() {
                 <button
                   type="button"
                   class="ghost"
-                  :aria-label="`Open ${org.name} details`"
+                  :aria-label="tr('Open {0} details', [org.name])"
                   @click="open(org)"
                 >
                   ›
@@ -522,10 +539,13 @@ async function createOrganization() {
                 :colspan="visible.length + 3 + Number(showTagColumn) + (sort === 'updated' ? 1 : 0)"
               >
                 <div class="empty">
-                  <h3>No matching organizations</h3>
+                  <h3>{{ tr('No matching organizations') }}</h3>
                   <p>
-                    Add an organization or adjust the search. Metrics appear once a sourced value
-                    has been recorded.
+                    {{
+                      tr(
+                        'Add an organization or adjust the search. Metrics appear once a sourced value has been recorded.',
+                      )
+                    }}
                   </p>
                 </div>
               </td>
@@ -535,12 +555,17 @@ async function createOrganization() {
       </div>
       <footer class="catalog-row pager">
         <span>
-          {{ total ? (page - 1) * PAGE_SIZE + 1 : 0 }}–{{ Math.min(page * PAGE_SIZE, total) }} of
-          {{ total }} organizations
+          {{
+            tr('{0}–{1} of {2} organizations', [
+              total ? (page - 1) * PAGE_SIZE + 1 : 0,
+              Math.min(page * PAGE_SIZE, total),
+              total,
+            ])
+          }}
         </span>
         <div>
           <button type="button" class="ghost" :disabled="page <= 1" @click="goToPage(page - 1)">
-            Previous
+            {{ tr('Previous') }}
           </button>
           <span>{{ page }}</span>
           <button
@@ -549,12 +574,12 @@ async function createOrganization() {
             :disabled="page * PAGE_SIZE >= total"
             @click="goToPage(page + 1)"
           >
-            Next
+            {{ tr('Next') }}
           </button>
         </div>
       </footer>
     </div>
-    <p class="hint">Every metric retains its source and observation date.</p>
+    <p class="hint">{{ tr('Every metric retains its source and observation date.') }}</p>
 
     <MetricDialog
       v-if="metricTarget"
@@ -569,65 +594,82 @@ async function createOrganization() {
       @updated="load"
       @rank-by="rankWith"
     />
-    <AppDialog v-if="method" title="Ranking basis" @close="method = false">
-      <p>{{ sortColumn?.description ?? 'Alphabetical or creation-date ordering.' }}</p>
-      <label for="basis">Source selection</label>
+    <AppDialog v-if="method" :title="tr('Ranking basis')" @close="method = false">
+      <p>{{ tr(sortColumn?.description ?? 'Alphabetical or creation-date ordering.') }}</p>
+      <label for="basis">{{ tr('Source selection') }}</label>
       <select
         id="basis"
         :value="basis"
         @change="update({ basis: ($event.target as HTMLSelectElement).value })"
       >
-        <option value="preferred">Preferred source</option>
-        <option v-if="activeTag === 'exchange'" value="cmc_web">CoinMarketCap only</option>
-        <option v-if="activeTag === 'exchange'" value="coingecko_web">CoinGecko only</option>
-        <option value="manual">Team observations only</option>
+        <option value="preferred">{{ tr('Preferred source') }}</option>
+        <option v-if="activeTag === 'exchange'" value="cmc_web">
+          {{ tr('CoinMarketCap only') }}
+        </option>
+        <option v-if="activeTag === 'exchange'" value="coingecko_web">
+          {{ tr('CoinGecko only') }}
+        </option>
+        <option value="manual">{{ tr('Team observations only') }}</option>
       </select>
       <p>
         {{
           activeTag === 'exchange'
-            ? 'Preferred source selects CoinMarketCap, then CoinGecko, then team observations.'
-            : 'Use the latest matching team observation.'
+            ? tr('Preferred source selects CoinMarketCap, then CoinGecko, then team observations.')
+            : tr('Use the latest matching team observation.')
         }}
-        Only matching units and reporting periods are eligible. Values are never averaged or
-        converted.
+        {{
+          tr(
+            'Only matching units and reporting periods are eligible. Values are never averaged or converted.',
+          )
+        }}
       </p>
       <p>
-        Ranks are calculated across the selected tag before search and pagination. Equal values
-        share a rank; missing values are unranked and appear last in either direction.
+        {{
+          tr(
+            'Ranks are calculated across the selected tag before search and pagination. Equal values share a rank; missing values are unranked and appear last in either direction.',
+          )
+        }}
       </p>
       <p>
-        Source identities stay independent until reviewed. Inspect a value to see its source and
-        original evidence.
+        {{
+          tr(
+            'Source identities stay independent until reviewed. Inspect a value to see its source and original evidence.',
+          )
+        }}
       </p>
     </AppDialog>
 
     <AppDialog
       v-if="creating"
-      title="Add organization"
+      :title="tr('Add organization')"
       :busy="createBusy"
       @close="creating = false"
     >
       <form @submit.prevent="createOrganization">
-        <label for="org-name">Organization name</label>
+        <label for="org-name">{{ tr('Organization name') }}</label>
         <input id="org-name" v-model="form.name" maxlength="160" required />
         <fieldset>
-          <legend>Organization tags</legend>
-          <p class="hint">Tags determine the available modules and metrics. Select one or more.</p>
+          <legend>{{ tr('Organization tags') }}</legend>
+          <p class="hint">
+            {{ tr('Tags determine the available modules and metrics. Select one or more.') }}
+          </p>
           <div class="tag-choices">
             <label v-for="key in tagIds" :key="key" class="choice">
               <input v-model="form.tags" type="checkbox" :value="key" />
-              <span>{{ tagDefinitions[key].title }}</span>
+              <span>{{ tr(tagDefinitions[key].title) }}</span>
             </label>
           </div>
         </fieldset>
-        <label for="org-description">Description</label>
+        <label for="org-description">{{ tr('Description') }}</label>
         <textarea id="org-description" v-model="form.description" maxlength="3000" rows="4" />
-        <p v-if="createError" class="error" role="alert">{{ createError }}</p>
+        <p v-if="createError" class="error" role="alert">{{ tr(createError) }}</p>
         <div class="actions">
           <button type="button" class="ghost" :disabled="createBusy" @click="creating = false">
-            Cancel
+            {{ tr('Cancel') }}
           </button>
-          <button type="submit" :disabled="createBusy || !form.tags.length">Create</button>
+          <button type="submit" :disabled="createBusy || !form.tags.length">
+            {{ tr('Create') }}
+          </button>
         </div>
       </form>
     </AppDialog>

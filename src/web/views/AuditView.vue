@@ -5,6 +5,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, errorText, session } from '../api';
 import { formatTime } from '../format';
+import { tr } from '../i18n';
+import { auditActionLabels, auditCategoryLabels } from '../../shared/audit';
 type Event = {
   id: string;
   at: string;
@@ -19,34 +21,6 @@ type Event = {
   after: Record<string, unknown> | null;
   stepUp: boolean;
 };
-const actionLabel: Record<string, string> = {
-  'auth.create': 'Account created',
-  'auth.update_tags': 'Account tags changed',
-  'auth.update_whitelist': 'IP whitelist changed',
-  'auth.update_owner': 'Account owner changed',
-  'auth.rotate_key': 'API key rotated',
-  'auth.terminate': 'Account terminated',
-  'hft_config.create': 'HFT channel created',
-  'hft_config.update': 'HFT config saved',
-  'hft_restart.request': 'HFT restart requested',
-  'member.invite': 'Member invited',
-  'member.role': 'Role changed',
-  'member.disable': 'Member disabled',
-  'member.enable': 'Member enabled',
-  'member.reset_totp': 'Authenticator reset',
-  'session.revoke': 'Signed out everywhere',
-  'agent_token.create': 'API token created',
-  'agent_token.revoke': 'API token revoked',
-  'login.locked': 'Sign-in locked',
-};
-const categories = [
-  ['', 'All'],
-  ['accounts', 'Accounts'],
-  ['hft', 'HFT'],
-  ['members', 'Members'],
-  ['tokens', 'Tokens'],
-  ['login', 'Login'],
-] as const;
 const filterKeys = ['actor', 'category', 'target', 'from', 'to'] as const;
 type Filters = Record<(typeof filterKeys)[number], string>;
 const route = useRoute();
@@ -131,41 +105,45 @@ function diff(event: Event) {
 </script>
 <template>
   <section class="page">
-    <h1>Audit log</h1>
+    <h1>{{ tr('Audit log') }}</h1>
     <p>
-      Changes to accounts, HFT settings, members and tokens. Entries cannot be edited or deleted.
+      {{
+        tr(
+          'Changes to accounts, HFT settings, members and tokens. Entries cannot be edited or deleted.',
+        )
+      }}
     </p>
     <form class="filters" @submit.prevent="applyFilters">
       <label>
-        Actor
+        {{ tr('Actor') }}
         <select v-model="filters.actor">
-          <option value="">Anyone</option>
+          <option value="">{{ tr('Anyone') }}</option>
           <option v-for="m in members" :key="m.id" :value="m.id">{{ m.name }}</option>
         </select>
       </label>
       <label>
-        Category
+        {{ tr('Category') }}
         <select v-model="filters.category">
-          <option v-for="[value, label] in categories" :key="value" :value="value">
-            {{ label }}
+          <option v-for="(label, value) in auditCategoryLabels" :key="value" :value="value">
+            {{ tr(label) }}
           </option>
         </select>
       </label>
-      <label>Target <input v-model="filters.target" maxlength="200" /></label>
-      <label>From <input v-model="filters.from" type="date" /></label>
-      <label>To <input v-model="filters.to" type="date" /></label>
-      <button type="submit">Apply</button>
+      <label>{{ tr('Target') }} <input v-model="filters.target" maxlength="200" /></label>
+      <label>{{ tr('From date') }} <input v-model="filters.from" type="date" /></label>
+      <label>{{ tr('To date') }} <input v-model="filters.to" type="date" /></label>
+      <button type="submit">{{ tr('Apply') }}</button>
     </form>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <p v-if="error" class="error" role="alert">{{ tr(error) }}</p>
     <div v-else class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Actor</th>
-            <th>Action</th>
-            <th>Target</th>
-            <th>Step-up</th>
+            <th>{{ tr('Time') }}</th>
+            <th>{{ tr('Actor') }}</th>
+            <th>{{ tr('Action') }}</th>
+            <th>{{ tr('Target') }}</th>
+            <th>{{ tr('Step-up') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -174,10 +152,10 @@ function diff(event: Event) {
               <td>{{ formatTime(e.at, locale) }}</td>
               <td>
                 {{ e.actorName }}
-                <small v-if="e.agentTokenName">via token {{ e.agentTokenName }}</small>
-                <small v-else-if="e.via === 'cli'">via command line</small>
+                <small v-if="e.agentTokenName">{{ tr('via token {0}', [e.agentTokenName]) }}</small>
+                <small v-else-if="e.via === 'cli'">{{ tr('via command line') }}</small>
               </td>
-              <td>{{ actionLabel[e.action] ?? e.action }}</td>
+              <td>{{ tr(auditActionLabels[e.action] ?? e.action) }}</td>
               <td>
                 <code>{{ e.targetKey }}</code>
               </td>
@@ -186,14 +164,14 @@ function diff(event: Event) {
             <tr v-if="expanded.has(e.id)" class="detail">
               <td colspan="5">
                 <p>
-                  <code>{{ e.targetTable }}</code> · event {{ e.id }}
+                  <code>{{ e.targetTable }}</code> · {{ tr('event {0}', [e.id]) }}
                 </p>
                 <table v-if="diff(e).length">
                   <thead>
                     <tr>
-                      <th>Field</th>
-                      <th>Before</th>
-                      <th>After</th>
+                      <th>{{ tr('Field') }}</th>
+                      <th>{{ tr('Before') }}</th>
+                      <th>{{ tr('After') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -213,7 +191,7 @@ function diff(event: Event) {
           </template>
         </tbody>
       </table>
-      <p v-if="!events.length && !loading">No matching events.</p>
+      <p v-if="!events.length && !loading">{{ tr('No matching events.') }}</p>
       <button
         v-if="events.length && !done"
         type="button"
@@ -221,7 +199,7 @@ function diff(event: Event) {
         :disabled="loading"
         @click="load(true)"
       >
-        Load more
+        {{ tr('Load more') }}
       </button>
     </div>
   </section>

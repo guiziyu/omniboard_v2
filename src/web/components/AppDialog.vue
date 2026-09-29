@@ -6,6 +6,7 @@ const stack: symbol[] = [];
 // 对话框共用行为(frontend-spec 0.3):Escape 与点遮罩关闭(忙时除外);Tab 困在最上层对话框内,
 // 焦点在对话框外时被拉回;打开时先聚焦输入控件;关闭后焦点回到打开前的元素;背景禁止滚动。
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { tr } from '../i18n';
 // drawer:靠右的抽屉(证据抽屉 5.10);eyebrow:标题上方的小字。
 const props = defineProps<{
   title: string;
@@ -86,7 +87,13 @@ onBeforeUnmount(() => {
           <small v-if="eyebrow" class="eyebrow">{{ eyebrow }}</small>
           <h2>{{ title }}</h2>
         </div>
-        <button type="button" class="ghost" aria-label="Close" :disabled="busy" @click="close">
+        <button
+          type="button"
+          class="ghost"
+          :aria-label="tr('Close')"
+          :disabled="busy"
+          @click="close"
+        >
           ✕
         </button>
       </header>

@@ -3,6 +3,7 @@
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, errorText, session, type User } from './api';
+import { tr } from './i18n';
 const route = useRoute();
 const router = useRouter();
 const base = `/api/activate/${encodeURIComponent(String(route.query.token ?? ''))}`;
@@ -54,13 +55,13 @@ async function complete() {
 </script>
 <template>
   <section class="card">
-    <h1>Activate your account</h1>
-    <p v-if="message" class="error" role="alert">{{ message }}</p>
+    <h1>{{ tr('Activate your account') }}</h1>
+    <p v-if="message" class="error" role="alert">{{ tr(message) }}</p>
     <template v-if="info && setup && !codes.length">
       <p>{{ info.name }} · {{ info.email }}</p>
       <form @submit.prevent="complete">
         <template v-if="info.purpose === 'activate'">
-          <label for="password">Password (12–200 characters)</label>
+          <label for="password">{{ tr('Password (12–200 characters)') }}</label>
           <input
             id="password"
             v-model="password"
@@ -70,7 +71,7 @@ async function complete() {
             maxlength="200"
             required
           />
-          <label for="confirm">Confirm password</label>
+          <label for="confirm">{{ tr('Confirm password') }}</label>
           <input
             id="confirm"
             v-model="confirm"
@@ -79,28 +80,30 @@ async function complete() {
             required
           />
         </template>
-        <p>Add this key to your authenticator app:</p>
+        <p>{{ tr('Add this key to your authenticator app:') }}</p>
         <p>
           <code>{{ setup.secret }}</code>
         </p>
-        <p><a :href="setup.uri">Open in authenticator app</a></p>
-        <label for="code">6-digit code</label>
+        <p>
+          <a :href="setup.uri">{{ tr('Open in authenticator app') }}</a>
+        </p>
+        <label for="code">{{ tr('6-digit code') }}</label>
         <input id="code" v-model="code" inputmode="numeric" autocomplete="one-time-code" required />
-        <button type="submit" :disabled="busy">Continue</button>
+        <button type="submit" :disabled="busy">{{ tr('Continue') }}</button>
       </form>
     </template>
     <template v-if="codes.length">
-      <p>Save these recovery codes. Each works once, and they are shown only now.</p>
+      <p>{{ tr('Save these recovery codes. Each works once, and they are shown only now.') }}</p>
       <ul>
         <li v-for="c in codes" :key="c">
           <code>{{ c }}</code>
         </li>
       </ul>
       <label
-        ><input v-model="saved" type="checkbox" style="width: auto" /> I have saved these
-        codes</label
+        ><input v-model="saved" type="checkbox" style="width: auto" />
+        {{ tr('I have saved these codes') }}</label
       >
-      <button type="button" :disabled="!saved" @click="finish">Continue</button>
+      <button type="button" :disabled="!saved" @click="finish">{{ tr('Continue') }}</button>
     </template>
   </section>
 </template>

@@ -2,6 +2,7 @@
 // frontend-spec 12.3:登录后停在原深链页面。
 import { ref } from 'vue';
 import { api, errorText, session, type User } from './api';
+import { tr } from './i18n';
 const props = defineProps<{ error?: string }>();
 const email = ref('');
 const password = ref('');
@@ -34,10 +35,10 @@ async function submit() {
 </script>
 <template>
   <form class="card" @submit.prevent="submit">
-    <h1>Sign in</h1>
-    <label for="email">Email</label>
+    <h1>{{ tr('Sign in') }}</h1>
+    <label for="email">{{ tr('Email') }}</label>
     <input id="email" v-model="email" type="email" autocomplete="username" required />
-    <label for="password">Password</label>
+    <label for="password">{{ tr('Password') }}</label>
     <input
       id="password"
       v-model="password"
@@ -45,7 +46,7 @@ async function submit() {
       autocomplete="current-password"
       required
     />
-    <label for="code">{{ useRecovery ? 'Recovery code' : 'Authenticator code' }}</label>
+    <label for="code">{{ useRecovery ? tr('Recovery code') : tr('Authenticator code') }}</label>
     <input
       id="code"
       v-model="code"
@@ -54,9 +55,9 @@ async function submit() {
       required
     />
     <button type="button" class="link" @click="useRecovery = !useRecovery">
-      {{ useRecovery ? 'Use an authenticator code' : 'Use a recovery code' }}
+      {{ useRecovery ? tr('Use an authenticator code') : tr('Use a recovery code') }}
     </button>
-    <p v-if="message" class="error" role="alert">{{ message }}</p>
-    <button type="submit" :disabled="busy">Sign in</button>
+    <p v-if="message" class="error" role="alert">{{ tr(message) }}</p>
+    <button type="submit" :disabled="busy">{{ tr('Sign in') }}</button>
   </form>
 </template>

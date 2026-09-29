@@ -1155,7 +1155,7 @@ test('workspace access pages', async ({ page }) => {
     await page.getByRole('button', { name: 'Add member' }).click();
     await dialog.getByLabel('Name').fill('Tia Trader');
     await dialog.getByLabel('Email').fill('tia@example.test');
-    await dialog.getByLabel(/^editor/).check();
+    await dialog.getByLabel(/^Editor/).check();
     await dialog.getByRole('button', { name: 'Create invite' }).click();
     const link = page.getByRole('dialog', { name: 'Invite link' });
     await expect(link.locator('pre')).toContainText('/activate?token=');
@@ -1171,7 +1171,7 @@ test('workspace access pages', async ({ page }) => {
     await expect(manage.getByRole('button', { name: 'Resend invite' })).toBeEnabled();
     await page.keyboard.press('Escape');
     await expect(manage).toBeHidden();
-    await expect(page.getByRole('row', { name: /Tia Trader/ })).toContainText('trader');
+    await expect(page.getByRole('row', { name: /Tia Trader/ })).toContainText('Trader');
   });
 
   await test.step('trading accounts: add, review edit, rotate, terminate', async () => {
@@ -1284,21 +1284,21 @@ test('workspace access pages', async ({ page }) => {
     await page.getByRole('button', { name: 'Add group override' }).click();
     await page.getByLabel('Prediction group 1').fill('BTC');
     await page.getByLabel('Max gross exposure 1').fill('3000');
-    await page.getByLabel('Max net exposure 1').fill('200');
+    await page.getByLabel('Max |net| exposure 1').fill('200');
     await expect(page.getByText('Use BaseAsset_<asset> or Beta_<name>.')).toBeVisible();
     await page.getByLabel('Prediction group 1').fill('BaseAsset_BTC');
     await page.getByRole('button', { name: 'Review changes' }).click();
     const review = page.getByRole('dialog', { name: 'Review changes' });
     await expect(review.getByRole('row', { name: 'Max active groups 30 20' })).toBeVisible();
     await expect(
-      review.getByRole('row', { name: 'Group BaseAsset_BTC — gross 3000 · |net| 200' }),
+      review.getByRole('row', { name: 'Group BaseAsset_BTC (gross / |net| USD) — 3000 / 200' }),
     ).toBeVisible();
     await review.getByRole('button', { name: 'Back' }).click();
     await expect(page.getByLabel('Max active groups')).toHaveValue('20');
     await page.getByRole('button', { name: 'Review changes' }).click();
     await review.getByRole('button', { name: 'Save changes' }).click();
     await expect(review).toBeHidden();
-    await expect(page.getByRole('cell', { name: 'Config saved' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'HFT config saved' })).toBeVisible();
     await expect(page.getByText('Max active groups: 30 → 20')).toBeVisible();
 
     // 别人在此期间保存过:拒绝覆盖,表单内容保留,Reload 后看到最新值。
@@ -1330,7 +1330,7 @@ test('workspace access pages', async ({ page }) => {
     await expect(page.getByLabel('Max active groups')).toHaveValue('25');
     await expect(page.getByLabel('Prediction group 1')).toHaveValue('BaseAsset_BTC');
 
-    await page.getByRole('link', { name: '← All channels' }).click();
+    await page.getByRole('link', { name: 'All channels' }).click();
     const card = page.locator('.hft-card').filter({ hasText: 'lp-browser' });
     await expect(card).toContainText('lp-browser');
     await expect(card).toContainText('gross 500 · |net| 200.125 · wallet ratio 0.8');
@@ -1350,7 +1350,7 @@ test('workspace access pages', async ({ page }) => {
     await expect(page.getByRole('row', { name: /Member invited/ }).first()).toBeVisible();
   });
 
-  await test.step('settings: API token, language, recovery codes with step-up', async () => {
+  await test.step('settings: API token, recovery codes with step-up', async () => {
     await page.getByRole('link', { name: 'Settings' }).click();
     await page.getByRole('button', { name: 'Create token' }).click();
     const create = page.getByRole('dialog', { name: 'Create token' });
@@ -1360,14 +1360,7 @@ test('workspace access pages', async ({ page }) => {
     const shown = page.getByRole('dialog', { name: 'API token' });
     await expect(shown.locator('pre')).toHaveText(/^obt_/);
     await shown.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByRole('row', { name: /migration agent/ })).toContainText('active');
-
-    const save = page.getByRole('button', { name: 'Save preferences' });
-    await expect(save).toBeDisabled();
-    await page.getByLabel('Display language').selectOption('ko');
-    await save.click();
-    await expect(page.getByText('Language preference saved.')).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
+    await expect(page.getByRole('row', { name: /migration agent/ })).toContainText('Active');
 
     await page.getByRole('button', { name: 'Regenerate recovery codes' }).click();
     const confirm = page.getByRole('dialog', { name: 'Confirm with your authenticator code' });
@@ -1380,6 +1373,42 @@ test('workspace access pages', async ({ page }) => {
     await expect(codes.locator('pre')).toHaveText(/^([a-z0-9]{4}-){2}[a-z0-9]{4}(\n|$)/);
     await codes.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText('10 unused recovery codes.')).toBeVisible();
+  });
+
+  await test.step('language: v2 pages in Chinese and Korean, kept after reload', async () => {
+    const save = page.getByRole('button', { name: 'Save preferences' });
+    await expect(save).toBeDisabled();
+    await page.getByLabel('Display language').selectOption('zh-CN');
+    await save.click();
+    await expect(page.getByText('语言偏好已保存。')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+    await expect(page.getByRole('heading', { name: '安全' })).toBeVisible();
+    await expect(page.getByText('还有 10 个未使用的恢复码。')).toBeVisible();
+    // 刷新后仍是中文;侧栏、审计、交易页都翻译,专名与用户数据保持原文。
+    await page.reload();
+    const main = page.getByRole('navigation', { name: '主导航' });
+    await expect(main.getByRole('link', { name: '审计日志' })).toBeVisible();
+    await main.getByRole('link', { name: 'HFT 配置' }).click();
+    await expect(page.getByRole('heading', { name: 'HFT 配置', level: 1 })).toBeVisible();
+    await expect(page.locator('.hft-card').filter({ hasText: 'lp-browser' })).toContainText(
+      '总敞口 500 · 净敞口绝对值 200.125 · 钱包比例 0.8',
+    );
+    await main.getByRole('link', { name: '账户' }).click();
+    await page.getByLabel('显示已停用').check();
+    await expect(page.getByRole('row', { name: /binance-lp-01/ })).toContainText('已停用');
+    await main.getByRole('link', { name: '审计日志' }).click();
+    await expect(page.getByRole('cell', { name: '已保存 HFT 配置' }).first()).toBeVisible();
+
+    await page.getByRole('link', { name: '设置', exact: true }).click();
+    await page.getByLabel('界面语言').selectOption('ko');
+    await page.getByRole('button', { name: '保存偏好' }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
+    await expect(page.getByRole('heading', { name: '보안' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '주 메뉴' })).toContainText('HFT 설정');
+
+    await page.getByLabel('표시 언어').selectOption('en');
+    await page.getByRole('button', { name: '설정 저장' }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   });
 
   await test.step('sign out, then sign in on the same deep link', async () => {

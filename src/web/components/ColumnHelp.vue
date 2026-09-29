@@ -2,6 +2,7 @@
 // 列说明浮层(frontend-spec 2.14):点「ⓘ」切换;点外部、关闭按钮、Escape、窗口尺寸变化、页面滚动
 // (浮层内部滚动除外)都会关闭;靠按钮右侧对齐,下方放不下时显示在上方;点按钮不触发列头排序。
 import { onMounted, onUnmounted, ref, useId } from 'vue';
+import { tr } from '../i18n';
 defineProps<{ title: string; description: string; sourceUrl?: string }>();
 const id = useId();
 const trigger = ref<HTMLButtonElement>();
@@ -46,7 +47,7 @@ onUnmounted(() => {
       ref="trigger"
       type="button"
       class="info-button"
-      :aria-label="`About ${title}`"
+      :aria-label="tr('About {0}', [tr(title)])"
       :aria-expanded="opened"
       :aria-controls="id"
       :popovertarget="id"
@@ -60,25 +61,25 @@ onUnmounted(() => {
       popover="auto"
       class="column-help-panel"
       role="region"
-      :aria-label="`${title} explained`"
+      :aria-label="tr('{0} explained', [tr(title)])"
       :style="{ left: `${left}px`, top: `${top}px` }"
       @toggle="toggled"
     >
       <header>
-        <strong>{{ title }}</strong>
+        <strong>{{ tr(title) }}</strong>
         <button
           type="button"
           class="ghost"
           :popovertarget="id"
           popovertargetaction="hide"
-          :aria-label="`Close ${title} explanation`"
+          :aria-label="tr('Close {0} explanation', [tr(title)])"
         >
           ✕
         </button>
       </header>
-      <p>{{ description }}</p>
+      <p>{{ tr(description) }}</p>
       <a v-if="sourceUrl" :href="sourceUrl" target="_blank" rel="noopener noreferrer"
-        >Methodology ↗</a
+        >{{ tr('Methodology') }} ↗</a
       >
     </div>
   </span>

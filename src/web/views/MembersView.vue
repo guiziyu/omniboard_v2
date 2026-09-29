@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 团队成员页(frontend-spec 12.5)。非 admin 无论从哪里进入都显示同一个错误(v1 待核项在此统一)。
 import { computed, onMounted, ref } from 'vue';
-import { api, errorText, roles, session, type Role } from '../api';
+import { api, errorText, roleLabels, roles, session, type Role } from '../api';
+import { tr } from '../i18n';
 import { formatTime } from '../format';
 import AppDialog from '../components/AppDialog.vue';
 import SecretOnce from '../components/SecretOnce.vue';
@@ -29,6 +30,11 @@ const roleHelp: Record<Role, string> = {
   admin: 'Everything, plus members, data sources and the audit log.',
 };
 const statusLabel = { invited: 'Invited', active: 'Active', disabled: 'Disabled' } as const;
+const tokenStates: Record<string, string> = {
+  active: 'Active',
+  expired: 'Expired',
+  revoked: 'Revoked',
+};
 const members = ref<Member[]>([]);
 const loadError = ref('');
 const locale = computed(() => session.user?.locale ?? 'en');
@@ -48,7 +54,8 @@ const form = ref({ name: '', email: '', role: 'reader' as Role });
 const busy = ref(false);
 const formError = ref('');
 const link = ref<{ title: string; value: string } | null>(null);
-const linkNote = 'Send this link to the member. It expires in 72 hours and is shown only once.';
+const linkNote = () =>
+  tr('Send this link to the member. It expires in 72 hours and is shown only once.');
 async function addMember() {
   busy.value = true;
   formError.value = '';
@@ -59,7 +66,7 @@ async function addMember() {
     });
     adding.value = false;
     form.value = { name: '', email: '', role: 'reader' };
-    link.value = { title: 'Invite link', value: result.inviteLink };
+    link.value = { title: tr('Invite link'), value: result.inviteLink };
     await load();
   } catch (e) {
     formError.value = errorText(e);
@@ -88,7 +95,7 @@ async function act(path: string, body: unknown = {}, method = 'POST') {
       method,
       body,
     });
-    if (result.inviteLink) link.value = { title: 'New link', value: result.inviteLink };
+    if (result.inviteLink) link.value = { title: tr('New link'), value: result.inviteLink };
     await load();
     const fresh = members.value.find((m) => m.id === current.value?.id);
     if (fresh) await manage(fresh);
@@ -101,29 +108,31 @@ async function act(path: string, body: unknown = {}, method = 'POST') {
 }
 const isSelf = computed(() => current.value?.id === session.user?.id);
 function confirmAct(message: string, path: string) {
-  if (confirm(message)) void act(path);
+  if (confirm(tr(message))) void act(path);
 }
 </script>
 <template>
   <section class="page">
     <header class="page-head">
       <div>
-        <p class="eyebrow">WORKSPACE ACCESS</p>
-        <h1>Team members</h1>
-        <p>Manage reader, editor, trader and administrator access.</p>
+        <p class="eyebrow">{{ tr('WORKSPACE ACCESS') }}</p>
+        <h1>{{ tr('Team members') }}</h1>
+        <p>{{ tr('Manage reader, editor, trader and administrator access.') }}</p>
       </div>
-      <button v-if="!loadError" type="button" @click="adding = true">Add member</button>
+      <button v-if="!loadError" type="button" @click="adding = true">
+        {{ tr('Add member') }}
+      </button>
     </header>
-    <p v-if="loadError" class="error" role="alert">{{ loadError }}</p>
+    <p v-if="loadError" class="error" role="alert">{{ tr(loadError) }}</p>
     <div v-else class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Member</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Status</th>
-            <th>Last login</th>
+            <th>{{ tr('Member') }}</th>
+            <th>{{ tr('Email') }}</th>
+            <th>{{ tr('Role') }}</th>
+            <th>{{ tr('Status') }}</th>
+            <th>{{ tr('Last login') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -131,50 +140,54 @@ function confirmAct(message: string, path: string) {
           <tr v-for="m in members" :key="m.id">
             <td>{{ m.name }}</td>
             <td>{{ m.email }}</td>
-            <td>{{ m.role }}</td>
-            <td>{{ statusLabel[m.status] }}</td>
+            <td>{{ tr(roleLabels[m.role]) }}</td>
+            <td>{{ tr(statusLabel[m.status]) }}</td>
             <td>{{ formatTime(m.lastLoginAt, locale) }}</td>
-            <td><button type="button" class="ghost" @click="manage(m)">Manage</button></td>
+            <td>
+              <button type="button" class="ghost" @click="manage(m)">{{ tr('Manage') }}</button>
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <AppDialog v-if="adding" title="Add member" :busy="busy" @close="adding = false">
+    <AppDialog v-if="adding" :title="tr('Add member')" :busy="busy" @close="adding = false">
       <form @submit.prevent="addMember">
-        <label for="m-name">Name</label>
+        <label for="m-name">{{ tr('Name') }}</label>
         <input id="m-name" v-model="form.name" maxlength="80" required />
-        <label for="m-email">Email</label>
+        <label for="m-email">{{ tr('Email') }}</label>
         <input id="m-email" v-model="form.email" type="email" maxlength="200" required />
         <fieldset>
-          <legend>Role</legend>
+          <legend>{{ tr('Role') }}</legend>
           <label v-for="r in roles" :key="r" class="choice">
             <input v-model="form.role" type="radio" name="role" :value="r" />
             <span
-              ><strong>{{ r }}</strong> — {{ roleHelp[r] }}</span
+              ><strong>{{ tr(roleLabels[r]) }}</strong> — {{ tr(roleHelp[r]) }}</span
             >
           </label>
         </fieldset>
-        <p v-if="formError" class="error" role="alert">{{ formError }}</p>
+        <p v-if="formError" class="error" role="alert">{{ tr(formError) }}</p>
         <div class="actions">
           <button type="button" class="ghost" :disabled="busy" @click="adding = false">
-            Cancel
+            {{ tr('Cancel') }}
           </button>
-          <button type="submit" :disabled="busy">Create invite</button>
+          <button type="submit" :disabled="busy">{{ tr('Create invite') }}</button>
         </div>
       </form>
     </AppDialog>
 
     <AppDialog v-if="current" :title="current.name" :busy="busy" @close="current = null">
-      <p>{{ current.email }} · {{ statusLabel[current.status] }}</p>
+      <p>{{ current.email }} · {{ tr(statusLabel[current.status]) }}</p>
       <form v-if="!isSelf" class="inline" @submit.prevent="act('', { role: nextRole }, 'PATCH')">
-        <label for="m-role">Role</label>
+        <label for="m-role">{{ tr('Role') }}</label>
         <select id="m-role" v-model="nextRole">
-          <option v-for="r in roles" :key="r" :value="r">{{ r }}</option>
+          <option v-for="r in roles" :key="r" :value="r">{{ tr(roleLabels[r]) }}</option>
         </select>
-        <button type="submit" :disabled="busy || nextRole === current.role">Change role</button>
+        <button type="submit" :disabled="busy || nextRole === current.role">
+          {{ tr('Change role') }}
+        </button>
       </form>
-      <p v-else>You cannot change your own role or disable yourself.</p>
+      <p v-else>{{ tr('You cannot change your own role or disable yourself.') }}</p>
       <div class="actions wrap">
         <button
           v-if="current.status === 'invited'"
@@ -183,7 +196,7 @@ function confirmAct(message: string, path: string) {
           :disabled="busy"
           @click="act('/resend-invite')"
         >
-          Resend invite
+          {{ tr('Resend invite') }}
         </button>
         <button
           v-if="current.status === 'active'"
@@ -192,7 +205,7 @@ function confirmAct(message: string, path: string) {
           :disabled="busy"
           @click="act('/sign-out')"
         >
-          Sign out everywhere
+          {{ tr('Sign out everywhere') }}
         </button>
         <button
           v-if="current.status === 'active'"
@@ -206,7 +219,7 @@ function confirmAct(message: string, path: string) {
             )
           "
         >
-          Reset authenticator
+          {{ tr('Reset authenticator') }}
         </button>
         <button
           v-if="current.status !== 'disabled' && !isSelf"
@@ -220,7 +233,7 @@ function confirmAct(message: string, path: string) {
             )
           "
         >
-          Disable
+          {{ tr('Disable') }}
         </button>
         <button
           v-if="current.status === 'disabled'"
@@ -228,30 +241,30 @@ function confirmAct(message: string, path: string) {
           :disabled="busy"
           @click="act('/enable')"
         >
-          Enable
+          {{ tr('Enable') }}
         </button>
       </div>
-      <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
-      <h3>API tokens</h3>
-      <p v-if="!tokens.length">No API tokens.</p>
+      <p v-if="actionError" class="error" role="alert">{{ tr(actionError) }}</p>
+      <h3>{{ tr('API tokens') }}</h3>
+      <p v-if="!tokens.length">{{ tr('No API tokens.') }}</p>
       <table v-else>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Role</th>
-            <th>Expires</th>
-            <th>Last used</th>
-            <th>Status</th>
+            <th>{{ tr('Name') }}</th>
+            <th>{{ tr('Role') }}</th>
+            <th>{{ tr('Expires') }}</th>
+            <th>{{ tr('Last used') }}</th>
+            <th>{{ tr('Status') }}</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="tk in tokens" :key="tk.id">
             <td>{{ tk.name }}</td>
-            <td>{{ tk.role }}</td>
+            <td>{{ tr(roleLabels[tk.role as Role] ?? tk.role) }}</td>
             <td>{{ formatTime(tk.expiresAt, locale) }}</td>
             <td>{{ formatTime(tk.lastUsedAt, locale) }}</td>
-            <td>{{ tk.state }}</td>
+            <td>{{ tr(tokenStates[tk.state] ?? tk.state) }}</td>
             <td>
               <button
                 v-if="tk.state === 'active'"
@@ -260,7 +273,7 @@ function confirmAct(message: string, path: string) {
                 :disabled="busy"
                 @click="act(`/tokens/${tk.id}`, undefined, 'DELETE')"
               >
-                Revoke
+                {{ tr('Revoke') }}
               </button>
             </td>
           </tr>
@@ -271,7 +284,7 @@ function confirmAct(message: string, path: string) {
     <SecretOnce
       v-if="link"
       :title="link.title"
-      :note="linkNote"
+      :note="linkNote()"
       :value="link.value"
       @close="link = null"
     />

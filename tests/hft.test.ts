@@ -58,8 +58,13 @@ test('HFT config rules match quant validation and PredictionGroup parsing', () =
   assert.deepEqual(
     hftChanges(settings({ groupLimits: [btc] }), settings({ maxActiveGroups: 20 })),
     [
-      { field: 'Max active groups', before: '30', after: '20' },
-      { field: 'Group BaseAsset_BTC', before: 'gross 3000 · |net| 200', after: '—' },
+      { field: 'Max active groups', values: [], before: '30', after: '20' },
+      {
+        field: 'Group {0} (gross / |net| USD)',
+        values: ['BaseAsset_BTC'],
+        before: '3000 / 200',
+        after: '—',
+      },
     ],
   );
 });

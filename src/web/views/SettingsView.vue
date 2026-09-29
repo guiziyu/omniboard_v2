@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 设置页:Language(frontend-spec 2.9)、Security 与 API tokens(12.6)。
 import { computed, onMounted, ref } from 'vue';
-import { api, atLeast, errorText, session, type Role } from '../api';
+import { api, atLeast, errorText, roleLabels, session, type Role } from '../api';
+import { tr } from '../i18n';
 import { formatTime } from '../format';
 import AppDialog from '../components/AppDialog.vue';
 import SecretOnce from '../components/SecretOnce.vue';
@@ -88,6 +89,11 @@ async function loadSecurity() {
 }
 
 // API tokens
+const tokenStates: Record<string, string> = {
+  active: 'Active',
+  expired: 'Expired',
+  revoked: 'Revoked',
+};
 type Token = {
   id: string;
   name: string;
@@ -130,7 +136,7 @@ async function createToken() {
   }
 }
 async function revoke(token: Token) {
-  if (!confirm(`Revoke “${token.name}”? Agents using it stop working immediately.`)) return;
+  if (!confirm(tr('Revoke “{0}”? Agents using it stop working immediately.', [token.name]))) return;
   await api(`/api/tokens/${token.id}`, { method: 'DELETE' });
   await loadTokens();
 }
@@ -138,28 +144,29 @@ onMounted(() => Promise.all([loadSecurity(), loadTokens()]));
 </script>
 <template>
   <section class="page">
-    <h1>Settings</h1>
-    <p>Preferences for your account.</p>
-
+    <h1>{{ tr('Settings') }}</h1>
+    <p>{{ tr('Preferences for your account.') }}</p>
     <form class="panel" @submit.prevent="saveLanguage">
-      <h2>Language</h2>
-      <label for="lang">Display language</label>
+      <h2>{{ tr('Language') }}</h2>
+      <label for="lang">{{ tr('Display language') }}</label>
       <select id="lang" v-model="chosen" @change="languageChanged">
         <option v-for="[value, label] in languages" :key="value" :value="value">{{ label }}</option>
       </select>
-      <p class="hint">Names and original source text stay in their original language.</p>
-      <p v-if="langStatus" role="status">{{ langStatus }}</p>
-      <p v-if="langError" class="error" role="alert">{{ langError }}</p>
+      <p class="hint">
+        {{ tr('Names and original source text stay in their original language.') }}
+      </p>
+      <p v-if="langStatus" role="status">{{ tr(langStatus) }}</p>
+      <p v-if="langError" class="error" role="alert">{{ tr(langError) }}</p>
       <button type="submit" :disabled="langBusy || chosen === session.user?.locale">
-        {{ langBusy ? 'Saving…' : 'Save preferences' }}
+        {{ langBusy ? tr('Saving…') : tr('Save preferences') }}
       </button>
     </form>
 
     <div class="panel">
-      <h2>Security</h2>
+      <h2>{{ tr('Security') }}</h2>
       <form @submit.prevent="changePassword">
-        <h3>Change password</h3>
-        <label for="pw-current">Current password</label>
+        <h3>{{ tr('Change password') }}</h3>
+        <label for="pw-current">{{ tr('Current password') }}</label>
         <input
           id="pw-current"
           v-model="pw.current"
@@ -167,7 +174,7 @@ onMounted(() => Promise.all([loadSecurity(), loadTokens()]));
           autocomplete="current-password"
           required
         />
-        <label for="pw-next">New password (12–200 characters)</label>
+        <label for="pw-next">{{ tr('New password (12–200 characters)') }}</label>
         <input
           id="pw-next"
           v-model="pw.next"
@@ -177,7 +184,7 @@ onMounted(() => Promise.all([loadSecurity(), loadTokens()]));
           maxlength="200"
           required
         />
-        <label for="pw-confirm">Confirm new password</label>
+        <label for="pw-confirm">{{ tr('Confirm new password') }}</label>
         <input
           id="pw-confirm"
           v-model="pw.confirm"
@@ -185,47 +192,51 @@ onMounted(() => Promise.all([loadSecurity(), loadTokens()]));
           autocomplete="new-password"
           required
         />
-        <p v-if="pwStatus" role="status">{{ pwStatus }}</p>
-        <p v-if="pwError" class="error" role="alert">{{ pwError }}</p>
-        <button type="submit" :disabled="pwBusy">Change password</button>
+        <p v-if="pwStatus" role="status">{{ tr(pwStatus) }}</p>
+        <p v-if="pwError" class="error" role="alert">{{ tr(pwError) }}</p>
+        <button type="submit" :disabled="pwBusy">{{ tr('Change password') }}</button>
       </form>
-      <h3>Recovery codes</h3>
-      <p>{{ codesLeft ?? '—' }} unused recovery codes.</p>
+      <h3>{{ tr('Recovery codes') }}</h3>
+      <p>{{ tr('{0} unused recovery codes.', [codesLeft ?? '—']) }}</p>
       <button type="button" class="ghost" @click="regenerating = true">
-        Regenerate recovery codes
+        {{ tr('Regenerate recovery codes') }}
       </button>
     </div>
 
     <div class="panel">
       <header class="page-head">
-        <h2>API tokens</h2>
-        <button type="button" @click="creating = true">Create token</button>
+        <h2>{{ tr('API tokens') }}</h2>
+        <button type="button" @click="creating = true">{{ tr('Create token') }}</button>
       </header>
       <p class="hint">
-        For agents calling the Omniboard API. Tokens cannot change trading accounts or HFT settings.
+        {{
+          tr(
+            'For agents calling the Omniboard API. Tokens cannot change trading accounts or HFT settings.',
+          )
+        }}
       </p>
-      <p v-if="!tokens.length">No API tokens.</p>
+      <p v-if="!tokens.length">{{ tr('No API tokens.') }}</p>
       <div v-else class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Role</th>
-              <th>Created</th>
-              <th>Expires</th>
-              <th>Last used</th>
-              <th>Status</th>
+              <th>{{ tr('Name') }}</th>
+              <th>{{ tr('Role') }}</th>
+              <th>{{ tr('Created') }}</th>
+              <th>{{ tr('Expires') }}</th>
+              <th>{{ tr('Last used') }}</th>
+              <th>{{ tr('Status') }}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="tk in tokens" :key="tk.id">
               <td>{{ tk.name }}</td>
-              <td>{{ tk.role }}</td>
+              <td>{{ tr(roleLabels[tk.role as Role] ?? tk.role) }}</td>
               <td>{{ formatTime(tk.createdAt, locale) }}</td>
               <td>{{ formatTime(tk.expiresAt, locale) }}</td>
               <td>{{ formatTime(tk.lastUsedAt, locale) }}</td>
-              <td>{{ tk.state }}</td>
+              <td>{{ tr(tokenStates[tk.state] ?? tk.state) }}</td>
               <td>
                 <button
                   v-if="tk.state === 'active'"
@@ -233,7 +244,7 @@ onMounted(() => Promise.all([loadSecurity(), loadTokens()]));
                   class="ghost"
                   @click="revoke(tk)"
                 >
-                  Revoke
+                  {{ tr('Revoke') }}
                 </button>
               </td>
             </tr>
@@ -242,32 +253,37 @@ onMounted(() => Promise.all([loadSecurity(), loadTokens()]));
       </div>
     </div>
 
-    <AppDialog v-if="creating" title="Create token" :busy="tokenBusy" @close="creating = false">
+    <AppDialog
+      v-if="creating"
+      :title="tr('Create token')"
+      :busy="tokenBusy"
+      @close="creating = false"
+    >
       <form @submit.prevent="createToken">
-        <label for="tk-name">Name</label>
+        <label for="tk-name">{{ tr('Name') }}</label>
         <input id="tk-name" v-model="tokenForm.name" maxlength="80" required />
-        <label for="tk-role">Role</label>
+        <label for="tk-role">{{ tr('Role') }}</label>
         <select id="tk-role" v-model="tokenForm.role">
-          <option v-for="r in tokenRoles" :key="r" :value="r">{{ r }}</option>
+          <option v-for="r in tokenRoles" :key="r" :value="r">{{ tr(roleLabels[r]) }}</option>
         </select>
-        <label for="tk-exp">Expires in</label>
+        <label for="tk-exp">{{ tr('Expires in') }}</label>
         <select id="tk-exp" v-model.number="tokenForm.expiresInDays">
-          <option :value="7">7 days</option>
-          <option :value="30">30 days</option>
-          <option :value="90">90 days</option>
+          <option v-for="days in [7, 30, 90]" :key="days" :value="days">
+            {{ tr('{0} days', [days]) }}
+          </option>
         </select>
-        <p v-if="tokenError" class="error" role="alert">{{ tokenError }}</p>
+        <p v-if="tokenError" class="error" role="alert">{{ tr(tokenError) }}</p>
         <div class="actions">
           <button type="button" class="ghost" :disabled="tokenBusy" @click="creating = false">
-            Cancel
+            {{ tr('Cancel') }}
           </button>
-          <button type="submit" :disabled="tokenBusy">Create</button>
+          <button type="submit" :disabled="tokenBusy">{{ tr('Create') }}</button>
         </div>
       </form>
     </AppDialog>
     <StepUpDialog
       v-if="regenerating"
-      summary="Regenerate your recovery codes. The old codes stop working."
+      :summary="tr('Regenerate your recovery codes. The old codes stop working.')"
       :busy="stepBusy"
       :error="stepError"
       @confirm="regenerate"
@@ -275,15 +291,15 @@ onMounted(() => Promise.all([loadSecurity(), loadTokens()]));
     />
     <SecretOnce
       v-if="newCodes"
-      title="New recovery codes"
-      note="Each code works once. They are shown only now."
+      :title="tr('New recovery codes')"
+      :note="tr('Each code works once. They are shown only now.')"
       :value="newCodes"
       @close="newCodes = null"
     />
     <SecretOnce
       v-if="newToken"
-      title="API token"
-      note="Copy this token now. It is shown only once."
+      :title="tr('API token')"
+      :note="tr('Copy this token now. It is shown only once.')"
       :value="newToken"
       @close="newToken = null"
     />

@@ -3,15 +3,20 @@
 // 错误时对话框保留,由调用方传回 error。
 import { ref } from 'vue';
 import AppDialog from './AppDialog.vue';
+import { tr } from '../i18n';
 defineProps<{ summary: string; busy?: boolean; error?: string }>();
 const emit = defineEmits<{ confirm: [code: string]; close: [] }>();
 const code = ref('');
 </script>
 <template>
-  <AppDialog title="Confirm with your authenticator code" :busy="busy" @close="emit('close')">
+  <AppDialog
+    :title="tr('Confirm with your authenticator code')"
+    :busy="busy"
+    @close="emit('close')"
+  >
     <form @submit.prevent="emit('confirm', code)">
       <p>{{ summary }}</p>
-      <label for="step-up-code">6-digit code</label>
+      <label for="step-up-code">{{ tr('6-digit code') }}</label>
       <input
         id="step-up-code"
         v-model="code"
@@ -21,10 +26,12 @@ const code = ref('');
         maxlength="6"
         required
       />
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ tr(error) }}</p>
       <div class="actions">
-        <button type="button" class="ghost" :disabled="busy" @click="emit('close')">Cancel</button>
-        <button type="submit" :disabled="busy || code.length !== 6">Confirm</button>
+        <button type="button" class="ghost" :disabled="busy" @click="emit('close')">
+          {{ tr('Cancel') }}
+        </button>
+        <button type="submit" :disabled="busy || code.length !== 6">{{ tr('Confirm') }}</button>
       </div>
     </form>
   </AppDialog>

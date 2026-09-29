@@ -2,6 +2,7 @@
 // HFT channel 的表单(frontend-spec 12.8):组合级字段与组覆盖表。校验与服务端共用 shared/hft;
 // 数值按完整精度显示与输入(文本框,不做缩写)。通过后交给页面(编辑先做改前 / 改后对照)。
 import { computed, ref } from 'vue';
+import { tr } from '../i18n';
 import {
   decimalText,
   fieldLabels,
@@ -81,27 +82,35 @@ const limitError = (i: number) => {
 const localError = ref('');
 function submit() {
   tried.value = true;
+  // 每个问题已显示在对应字段旁,这里只给一句总提示。
   localError.value =
-    (props.withChannel && channelError.value ? `Channel: ${channelError.value}` : '') ||
-    (settingsProblem(parsed.value) ?? '');
+    (props.withChannel && channelError.value) || settingsProblem(parsed.value)
+      ? 'Fix the problems marked above.'
+      : '';
   if (localError.value) return;
   emit('save', {
     channel: form.value.channel,
     settings: { ...parsed.value, groupLimits: sortLimits(parsed.value.groupLimits) },
   });
 }
+const groupHint = () =>
+  tr(
+    'Groups not listed use the per-group limits above. Names are BaseAsset_<asset> or Beta_<name>.',
+  );
 const addLimit = () => form.value.limits.push({ predictionGroup: '', gross: '', net: '' });
 </script>
 <template>
   <form class="hft-form" autocomplete="off" @submit.prevent="submit">
     <template v-if="withChannel">
-      <label for="h-channel">Channel</label>
+      <label for="h-channel">{{ tr('Config channel') }}</label>
       <input id="h-channel" v-model="form.channel" maxlength="100" />
-      <p class="hint">The channel name HFT is started with. It cannot be renamed or deleted.</p>
-      <p v-if="channelError" class="error">{{ channelError }}</p>
+      <p class="hint">
+        {{ tr('The channel name HFT is started with. It cannot be renamed or deleted.') }}
+      </p>
+      <p v-if="channelError" class="error">{{ tr(channelError) }}</p>
     </template>
     <template v-for="field in fields" :key="field">
-      <label :for="`h-${field}`">{{ fieldLabels[field] }}</label>
+      <label :for="`h-${field}`">{{ tr(fieldLabels[field]) }}</label>
       <input
         v-if="field === 'portfolioGroup'"
         :id="`h-${field}`"
@@ -115,19 +124,21 @@ const addLimit = () => form.value.limits.push({ predictionGroup: '', gross: '', 
         inputmode="decimal"
         maxlength="40"
       />
-      <p class="hint">{{ fieldRules[field] }}</p>
-      <p v-if="fieldError(field)" class="error">{{ fieldError(field) }}</p>
+      <p class="hint">{{ tr(fieldRules[field]) }}</p>
+      <p v-if="fieldError(field)" class="error">{{ tr(fieldError(field)) }}</p>
     </template>
 
-    <h3>Group overrides</h3>
+    <h3>{{ tr('Group overrides') }}</h3>
     <div class="table-wrap">
       <table class="hft-limits">
         <thead>
           <tr>
-            <th>Prediction group</th>
-            <th>Max gross exposure (USD)</th>
-            <th>Max |net| exposure (USD)</th>
-            <th><span class="visually-hidden">Remove</span></th>
+            <th>{{ tr('Prediction group') }}</th>
+            <th>{{ tr('Max gross exposure (USD)') }}</th>
+            <th>{{ tr('Max |net| exposure (USD)') }}</th>
+            <th>
+              <span class="visually-hidden">{{ tr('Remove') }}</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -136,7 +147,7 @@ const addLimit = () => form.value.limits.push({ predictionGroup: '', gross: '', 
               <td>
                 <input
                   v-model="row.predictionGroup"
-                  :aria-label="`Prediction group ${i + 1}`"
+                  :aria-label="tr('Prediction group {0}', [i + 1])"
                   list="h-groups"
                   maxlength="100"
                   placeholder="BaseAsset_BTC"
@@ -145,7 +156,7 @@ const addLimit = () => form.value.limits.push({ predictionGroup: '', gross: '', 
               <td>
                 <input
                   v-model="row.gross"
-                  :aria-label="`Max gross exposure ${i + 1}`"
+                  :aria-label="tr('Max gross exposure {0}', [i + 1])"
                   inputmode="decimal"
                   maxlength="40"
                 />
@@ -153,19 +164,19 @@ const addLimit = () => form.value.limits.push({ predictionGroup: '', gross: '', 
               <td>
                 <input
                   v-model="row.net"
-                  :aria-label="`Max net exposure ${i + 1}`"
+                  :aria-label="tr('Max |net| exposure {0}', [i + 1])"
                   inputmode="decimal"
                   maxlength="40"
                 />
               </td>
               <td>
                 <button type="button" class="ghost" @click="form.limits.splice(i, 1)">
-                  Remove
+                  {{ tr('Remove') }}
                 </button>
               </td>
             </tr>
             <tr v-if="limitError(i)">
-              <td colspan="4" class="error">{{ limitError(i) }}</td>
+              <td colspan="4" class="error">{{ tr(limitError(i)) }}</td>
             </tr>
           </template>
         </tbody>
@@ -175,15 +186,14 @@ const addLimit = () => form.value.limits.push({ predictionGroup: '', gross: '', 
       <option v-for="g in knownGroups" :key="g" :value="g" />
     </datalist>
     <p class="hint">
-      Groups not listed use the per-group limits above. Names are BaseAsset_&lt;asset&gt; or
-      Beta_&lt;name&gt;.
+      {{ groupHint() }}
     </p>
-    <button type="button" class="ghost" @click="addLimit">Add group override</button>
+    <button type="button" class="ghost" @click="addLimit">{{ tr('Add group override') }}</button>
 
-    <p v-if="localError || error" class="error" role="alert">{{ localError || error }}</p>
+    <p v-if="localError || error" class="error" role="alert">{{ tr(localError || error) }}</p>
     <div class="actions">
       <button type="button" class="ghost" :disabled="busy" @click="emit('close')">
-        {{ withChannel ? 'Cancel' : 'Discard changes' }}
+        {{ withChannel ? tr('Cancel') : tr('Discard changes') }}
       </button>
       <button type="submit" :disabled="busy">{{ submitLabel }}</button>
     </div>
