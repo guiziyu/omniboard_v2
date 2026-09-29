@@ -737,6 +737,129 @@ test('workspace access pages', async ({ page }) => {
     await nav.getByRole('link', { name: 'Organizations' }).click();
   });
 
+  await test.step('compare and compliance: rule matrix, pick, field matrix, swap, compact sides', async () => {
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    const editor = page.getByRole('dialog', { name: 'Add organization knowledge' });
+    async function rule(title: string, decision: string, place: string, entity: string) {
+      await editor.getByLabel('Title').fill(title);
+      await editor.getByLabel(/^Who can use this/).selectOption(decision);
+      await editor.getByLabel(/^Jurisdiction/).fill(place);
+      await editor.getByLabel('Exact legal entity').fill(entity);
+      await editor.getByLabel('Product and customer scope').fill('Spot · institutional');
+      await editor
+        .getByLabel('How the rule is applied, or what still needs checking')
+        .fill('KYC by entity.');
+      await editor
+        .getByLabel('What has been checked, and what happens next?')
+        .fill('Read the published terms.');
+      await editor.getByLabel('Notes').fill(`${entity} terms.`);
+      await editor.getByLabel('Original text').fill(`${entity}: ${place} spot access.`);
+      await editor.getByRole('button', { name: 'Save record' }).click();
+      await expect(editor).toBeHidden();
+    }
+    // Compliance 矩阵(5.8):下方列表只显示在矩阵里选中的那条规则。
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Compliance', exact: true }).click();
+    await page.getByRole('button', { name: 'Add the first record' }).click();
+    await rule('Acme SG spot rule', 'whitelist', 'Singapore', 'Acme Pte Ltd');
+    await page.getByRole('button', { name: 'Add record' }).click();
+    await rule('Acme US rule', 'blacklist', 'United States', 'Acme Inc');
+    const rules = page.getByRole('region', { name: 'Compliance rules' });
+    await expect(rules.locator('tbody tr')).toHaveCount(2);
+    await expect(rules.locator('.decision-blacklist')).toHaveText(
+      'Listed users / products restricted',
+    );
+    const cards = page.locator('details.record-card');
+    await expect(cards).toHaveCount(0);
+    await rules
+      .locator('tbody tr')
+      .filter({ hasText: 'Acme Inc' })
+      .getByRole('button', { name: 'Rule & evidence' })
+      .click();
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toHaveAttribute('open', '');
+    await expect(cards.first()).toContainText('Acme US rule');
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(cards).toHaveCount(0);
+
+    // 从详情页进入对比(4.5):选择器排除自身。
+    await page.getByRole('button', { name: 'Compare organizations' }).click();
+    const picker = page.getByRole('dialog', { name: 'Select an organization' });
+    await expect(picker.getByRole('button', { name: /Beta Bank/ })).toBeVisible();
+    await expect(picker.getByRole('button', { name: /Acme Exchange/ })).toHaveCount(0);
+    await picker.getByLabel('Search organizations to select').fill('zzz');
+    await expect(picker).toContainText('No matching organizations');
+    await picker.getByLabel('Search organizations to select').fill('Beta');
+    await picker.getByRole('button', { name: /Beta Bank/ }).click();
+    await expect(page).toHaveURL(/\/w\/internal\/compare\/[^/]+\/[^/]+\/compliance$/);
+    await expect(page.getByRole('heading', { name: 'Organization comparison' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: /^Organizations/ })).toHaveClass(
+      /router-link-active/,
+    );
+    const matrix = page.getByRole('region', { name: 'Compare the same fields' });
+    await expect(matrix).toContainText('No record for this scope');
+
+    // 并排模式里给右侧补一条记录,再回到字段对比。
+    await page.getByRole('button', { name: 'Open full records side by side' }).click();
+    const sides = page.locator('.compare-side');
+    await expect(sides).toHaveCount(2);
+    await expect(sides.nth(1).locator('.side-letter')).toHaveText('B');
+    await sides.nth(1).getByRole('button', { name: 'Add the first record' }).click();
+    await rule('Beta SG rule', 'whitelist', 'Singapore', 'Beta Bank Pte');
+    await expect(sides.nth(1).getByRole('region', { name: 'Compliance rules' })).toBeVisible();
+    await page.getByRole('button', { name: 'Compare the same fields' }).click();
+    await matrix
+      .getByLabel('Select record for Acme Exchange')
+      .selectOption({ label: 'Acme SG spot rule' });
+    const fieldRow = (label: string) => matrix.locator('tbody tr').filter({ hasText: label });
+    await expect(fieldRow('Jurisdiction')).toBeVisible();
+    await expect(fieldRow('Exact legal entity')).toHaveClass(/difference/);
+    await matrix.getByLabel('Differences & unknowns only').check();
+    await expect(fieldRow('Jurisdiction')).toHaveCount(0);
+    await expect(fieldRow('Who can use this?')).toHaveCount(0);
+    await expect(fieldRow('Exact legal entity')).toContainText('Beta Bank Pte');
+    await matrix.getByRole('button', { name: 'Original reference' }).first().click();
+    await expect(page.getByRole('dialog', { name: 'Original reference' })).toContainText(
+      'Acme Pte Ltd: Singapore spot access.',
+    );
+    await page.keyboard.press('Escape');
+
+    // 交换左右;替换时排除另一侧。
+    const acmeFirst = page.url();
+    await page.getByRole('button', { name: 'Swap sides' }).click();
+    await expect(matrix.locator('thead th').nth(1)).toContainText('Beta Bank');
+    await page.getByRole('button', { name: 'Replace right' }).click();
+    await expect(picker.getByRole('button', { name: /Acme Exchange/ })).toBeVisible();
+    await expect(picker.getByRole('button', { name: /Beta Bank/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+    await page.getByRole('button', { name: 'Swap sides' }).click();
+    await expect(page).toHaveURL(acmeFirst);
+
+    // 路线图两侧都是紧凑版;Overview 的链接停留在对比路由里。
+    await page.getByRole('button', { name: 'Roadmap', exact: true }).click();
+    await page.getByRole('button', { name: 'Open full records side by side' }).click();
+    const roadmaps = page.getByRole('region', { name: 'Roadmap' });
+    await expect(roadmaps).toHaveCount(2);
+    await expect(roadmaps.first()).toHaveClass(/compact/);
+    await expect(roadmaps.first()).toContainText('Acme market-making agreement');
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await sides
+      .first()
+      .getByRole('link', { name: /^Compliance Entity/ })
+      .click();
+    await expect(page).toHaveURL(/\/compare\/[^/]+\/[^/]+\/compliance$/);
+
+    // 移动端一次只显示一侧。
+    await page.setViewportSize({ width: 600, height: 900 });
+    await expect(sides.nth(1)).toBeHidden();
+    await page.getByRole('button', { name: 'B · Beta Bank' }).click();
+    await expect(sides.nth(0)).toBeHidden();
+    await expect(sides.nth(1)).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await nav.getByRole('link', { name: 'Organizations' }).click();
+  });
+
   await test.step('talent: graph names, return state, profile import, generated movements, goals', async () => {
     const nav = page.getByRole('navigation', { name: 'Main' });
     // 图谱里的人员名称链到人才库;后退回到图谱时恢复深度、历史、缩放与已选关系(7.7、7.8)。

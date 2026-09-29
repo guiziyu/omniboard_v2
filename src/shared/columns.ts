@@ -500,6 +500,8 @@ export interface DirectoryOrganization {
   tags: Tag[];
   recordCount: number;
   createdAt: string;
+  /** 已关联的采集来源(cmc_web、coingecko_web…)。 */
+  sourceNames: string[];
   rank: number | null;
   values: Record<string, MetricPoint | null>;
 }

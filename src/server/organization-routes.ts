@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { problem } from './auth';
+import { problem, type Role } from './auth';
 import type { Pool } from './db';
 import { tx } from './db';
 import { importedTime, requireImport, requireRole } from './access';
@@ -42,7 +42,7 @@ import {
   saveRecord,
 } from './records';
 import { getOrganizationProfile, saveOrganizationProfile } from './profiles';
-import { tabsFor } from '../shared/registry';
+import { tabsFor, unionTabs } from '../shared/registry';
 // 机构目录、机构、记录、指标观测与证据的接口(frontend-spec 2.6、3、5、6.2、9.2–9.3)。
 export type OrganizationDeps = { pool: Pool; store: EvidenceStore; now: () => number };
 const idParam = z.object({ id: z.string().min(1).max(100) });
@@ -74,16 +74,40 @@ export function registerOrganizationRoutes(app: FastifyInstance, deps: Organizat
     return reply.code(201).send(created);
   });
   // 详情(frontend-spec 4.1):别名解析到规范机构;附最近一次采集的来源与可读的档案条目。
-  app.get('/api/organizations/:id', async (request) => {
-    const { id } = idParam.parse(request.params);
-    const org = await getOrganization(pool, id, request.user.role);
+  async function organizationDetail(id: string, role: Role) {
+    const org = await getOrganization(pool, id, role);
     return {
-      organization: {
-        ...org,
-        sources: await observations(pool, org.id),
-        profile: await getOrganizationProfile(pool, org.id, request.user.role),
-      },
-      tabs: tabsFor(org.tags),
+      ...org,
+      sources: await observations(pool, org.id),
+      profile: await getOrganizationProfile(pool, org.id, role),
+    };
+  }
+  app.get('/api/organizations/:id', async (request) => {
+    const organization = await organizationDetail(
+      idParam.parse(request.params).id,
+      request.user.role,
+    );
+    return { organization, tabs: tabsFor(organization.tags) };
+  });
+  // 两机构对比(4.5):tab 取两侧并集;别名解析到规范机构,前端据返回的 id 改写地址。
+  const compareQuery = z
+    .object({
+      left: z.string().min(1).max(100),
+      right: z.string().min(1).max(100),
+      tab: z.string().min(1).max(40).default('overview'),
+    })
+    .strict();
+  app.get('/api/compare', async (request) => {
+    const query = compareQuery.parse(request.query);
+    const role = request.user.role;
+    const left = await organizationDetail(query.left, role);
+    const right = await organizationDetail(query.right, role);
+    const manifest = unionTabs(left.tags, right.tags);
+    if (!manifest.some((t) => t.id === query.tab)) problem(404, 'Module not found.');
+    return {
+      tabs: manifest,
+      left: { organization: left, module: await moduleData(pool, left, query.tab, role) },
+      right: { organization: right, module: await moduleData(pool, right, query.tab, role) },
     };
   });
   // 样本历史(4.9):所有成功采集批次,最多 200 行。

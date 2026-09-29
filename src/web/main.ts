@@ -43,6 +43,11 @@ const router = createRouter({
       meta: { title: 'Organizations' },
     },
     {
+      path: '/w/internal/compare/:left/:right/:tab?',
+      component: () => import('./views/OrganizationView.vue'),
+      meta: { title: 'Organizations' },
+    },
+    {
       path: '/w/internal/talent',
       component: () => import('./views/TalentView.vue'),
       meta: { title: 'Talent directory' },

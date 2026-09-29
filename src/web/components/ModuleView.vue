@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 一个模块 tab 的内容(frontend-spec 4.3、4.4、5.1、5.2、5.4),从 v1 ModuleView.vue 迁移。
+// 一个模块 tab 的内容(frontend-spec 4.3、4.4、5.1、5.2、5.4、5.8),从 v1 ModuleView.vue 迁移。
+// compact:对比页(4.5)两侧并排时的紧凑版。
 import { computed, nextTick, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { api, atLeast, session } from '../api';
@@ -31,6 +32,7 @@ import {
   reviewPresentation,
 } from '../presentation';
 import AppDialog from './AppDialog.vue';
+import ComplianceMatrix from './ComplianceMatrix.vue';
 import DiscussionPanel from './DiscussionPanel.vue';
 import Icon from './Icon.vue';
 import KnowledgePanel from './KnowledgePanel.vue';
@@ -40,7 +42,12 @@ import PeopleMovements from './PeopleMovements.vue';
 import RoadmapPanel from './RoadmapPanel.vue';
 import RecordEditor from './RecordEditor.vue';
 import RecordHistory from './RecordHistory.vue';
-const props = defineProps<{ organization: Organization; data: ModuleData; tab: TabDefinition }>();
+const props = defineProps<{
+  organization: Organization;
+  data: ModuleData;
+  tab: TabDefinition;
+  compact?: boolean;
+}>();
 const emit = defineEmits<{ refresh: [] }>();
 const route = useRoute();
 const canEdit = computed(() => !!session.user && atLeast(session.user.role, 'editor'));
@@ -94,10 +101,15 @@ const displayed = computed(() =>
     : records.value,
 );
 const contactCards = computed(() => groupContacts(records.value, sharedObjects.value));
+// Compliance(5.4、5.8):列表只显示在矩阵里选中的那条规则。
+const isCompliance = computed(() => props.tab.id === 'compliance');
+const complianceSelection = ref('');
 const cards = computed(() =>
   isContacts.value
     ? groupContacts(displayed.value, sharedObjects.value)
-    : displayed.value.map((record) => ({ id: record.id, records: [record] })),
+    : displayed.value
+        .filter((record) => !isCompliance.value || record.id === complianceSelection.value)
+        .map((record) => ({ id: record.id, records: [record] })),
 );
 const merged = (card: { records: ModuleRecord[] }) => isContacts.value && card.records.length > 1;
 // 联系人对话记录(5.9):列出关联到该联系人的讨论。
@@ -193,17 +205,20 @@ const nextStepTitle = computed(() =>
 );
 
 // ?record=<id>:展开并滚动到该记录(5.4);在合并的联系人卡片里时先展开卡片。
+async function reveal(target: string, behavior: ScrollBehavior = 'auto') {
+  if (isCompliance.value) complianceSelection.value = target;
+  await nextTick();
+  const element = document.getElementById(`record-${target}`);
+  const parent = element?.parentElement?.closest('details.contact-person-card');
+  if (parent instanceof HTMLDetailsElement) parent.open = true;
+  if (element instanceof HTMLDetailsElement) element.open = true;
+  element?.scrollIntoView({ block: 'start', behavior });
+}
 watch(
   () => [route.query.record, props.data, sharedObjects.value],
-  async () => {
+  () => {
     const target = String(route.query.record || '');
-    if (!records.value.some((record) => record.id === target)) return;
-    await nextTick();
-    const element = document.getElementById(`record-${target}`);
-    const parent = element?.parentElement?.closest('details.contact-person-card');
-    if (parent instanceof HTMLDetailsElement) parent.open = true;
-    if (element instanceof HTMLDetailsElement) element.open = true;
-    element?.scrollIntoView({ block: 'start' });
+    if (records.value.some((record) => record.id === target)) void reveal(target);
   },
   { immediate: true },
 );
@@ -215,7 +230,7 @@ const showList = computed(
 );
 </script>
 <template>
-  <div class="module-view">
+  <div class="module-view" :class="{ compact }">
     <div v-if="data.status === 'not_applicable'" class="empty">
       <span class="tag">{{ tr('NOT APPLICABLE') }}</span>
       <h3>{{ tr('Not available: {0}', [tr(tab.title)]) }}</h3>
@@ -255,6 +270,7 @@ const showList = computed(
       <OrganizationOverview
         v-if="tab.kind === 'overview'"
         :organization="organization"
+        :compact="compact"
         @add-note="edit()"
       />
       <OrgChart
@@ -270,8 +286,15 @@ const showList = computed(
         v-if="tab.id === 'roadmap'"
         :organization="organization"
         :records="records"
+        :compact="compact"
         @edit="edit"
         @history="historyFor = $event"
+      />
+      <ComplianceMatrix
+        v-if="isCompliance && records.length"
+        :records="records"
+        :selected="complianceSelection"
+        @open="reveal($event.id, 'smooth')"
       />
       <template v-if="tab.id === 'onboarding'">
         <OnboardingProgress
@@ -341,6 +364,14 @@ const showList = computed(
         </button>
       </div>
       <div v-if="showList" class="record-list">
+        <button
+          v-if="isCompliance && complianceSelection"
+          type="button"
+          class="link"
+          @click="complianceSelection = ''"
+        >
+          {{ tr('Close') }}
+        </button>
         <h4 v-if="tab.kind === 'overview'" class="subheading">
           {{ tr('Team knowledge') }} <span>{{ records.length }}</span>
         </h4>

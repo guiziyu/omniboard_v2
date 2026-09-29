@@ -29,13 +29,18 @@ export function useOrganizationWork(id: () => string, revision: () => string = (
   });
   return { work, loading, error, load };
 }
-/** 本机构某个 tab(可带 ?record=)的链接,保留当前查询参数。 */
+/** 本机构某个 tab(可带 ?record=)的链接,保留当前查询参数;对比页(4.5)里停留在对比路由,只切换 tab。 */
 export function useOrganizationTab(id: () => string) {
   const route = useRoute();
   return (tab: string, recordId?: string) => {
     const query = { ...route.query };
     delete query.record;
     if (recordId) query.record = recordId;
-    return { path: `/w/internal/organizations/${id()}/${tab}`, query };
+    const { left, right } = route.params;
+    const path =
+      left && right
+        ? `/w/internal/compare/${String(left)}/${String(right)}/${tab}`
+        : `/w/internal/organizations/${id()}/${tab}`;
+    return { path, query };
   };
 }

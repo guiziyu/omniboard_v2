@@ -49,7 +49,9 @@ watch(
   },
 );
 // 详情页、对比页不属于其他导航项时,Organizations 保持高亮(frontend-spec 2.3)。
-const inOrganizations = computed(() => route.path.startsWith('/w/internal/organizations'));
+const inOrganizations = computed(() =>
+  ['/w/internal/organizations', '/w/internal/compare/'].some((p) => route.path.startsWith(p)),
+);
 watch(
   () => route.path,
   () => (menuOpen.value = false),

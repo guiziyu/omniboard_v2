@@ -1,18 +1,20 @@
 <script setup lang="ts">
 // Overview(frontend-spec 4.7–4.10),从 v1 OrganizationOverview.vue 迁移。
 import { computed, ref } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { RouterLink } from 'vue-router';
 import { api, atLeast, errorText, session } from '../api';
 import { tr } from '../i18n';
 import { dateTime, sourceName } from '../labels';
 import { displayMetric } from '../format';
 import { openEvidence } from '../evidence';
+import { useOrganizationTab } from '../organization-work';
 import { tabsFor } from '../../shared/registry';
 import type { Observation, Organization } from '../../shared/types';
 import Icon from './Icon.vue';
 import OrganizationMetrics from './OrganizationMetrics.vue';
 import OrganizationWorkSummary from './OrganizationWorkSummary.vue';
-const props = defineProps<{ organization: Organization }>();
+// compact:对比页两侧并排(4.5);指标区锚点只留给单机构页。
+const props = defineProps<{ organization: Organization; compact?: boolean }>();
 const emit = defineEmits<{ addNote: [] }>();
 const canEdit = computed(() => !!session.user && atLeast(session.user.role, 'editor'));
 const expandedAbout = ref(false);
@@ -33,11 +35,7 @@ const latestCapture = computed(() =>
     .at(-1),
 );
 const hasTab = (id: string) => tabsFor(props.organization.tags).some((t) => t.id === id);
-const route = useRoute();
-const tabRoute = (tab: string) => ({
-  path: `/w/internal/organizations/${props.organization.id}/${tab}`,
-  query: route.query,
-});
+const tabRoute = useOrganizationTab(() => props.organization.id);
 // 样本历史(4.9):所有成功采集批次。
 const history = ref<Observation[]>();
 const historyError = ref('');
@@ -59,7 +57,7 @@ async function toggleHistory() {
 const volume = (point: Observation) => point.metrics.find((m) => m.key === 'volume_24h');
 </script>
 <template>
-  <div class="organization-overview">
+  <div class="organization-overview" :class="{ 'overview-compact': compact }">
     <section class="overview-intro">
       <div class="section-heading">
         <h4>{{ tr('About {0}', [organization.name]) }}</h4>
@@ -104,7 +102,11 @@ const volume = (point: Observation) => point.metrics.find((m) => m.key === 'volu
     </section>
 
     <OrganizationWorkSummary v-if="hasTab('onboarding')" :organization="organization" />
-    <section id="metrics" class="overview-snapshot" :aria-label="tr('Key metrics')">
+    <section
+      :id="compact ? undefined : 'metrics'"
+      class="overview-snapshot"
+      :aria-label="tr('Key metrics')"
+    >
       <div class="section-heading">
         <h4>
           {{ organization.tags.includes('exchange') ? tr('Market snapshot') : tr('Key metrics') }}

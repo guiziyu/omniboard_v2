@@ -271,6 +271,38 @@ test('records: states, revisions, references, visibility, history, profile', asy
     assert.equal((await call('GET', other, undefined, 'admin')).json().status, 'ready');
   });
 
+  // 机构对比(frontend-spec 4.5),v1 tests/integration.test.ts 的 /compare 断言。
+  await t.test('comparison: union of tabs, per-side status, aliases resolve', async () => {
+    const compare = (left: string, right: string, tab: string, role = 'editor') =>
+      call('GET', `/api/compare?left=${left}&right=${right}&tab=${tab}`, undefined, role);
+    const res = await compare(org, exchange, 'compliance', 'reader');
+    assert.equal(res.statusCode, 200, res.body);
+    assert.deepEqual(
+      res.json().tabs.map((tab: { id: string }) => tab.id),
+      unionTabs(['company'], ['exchange']).map((tab) => tab.id),
+    );
+    assert.equal(res.json().left.module.status, 'not_applicable');
+    assert.equal('records' in res.json().left.module, false);
+    assert.equal(res.json().right.module.status, 'restricted');
+    assert.equal('records' in res.json().right.module, false);
+    const admin = (await compare(org, exchange, 'compliance', 'admin')).json();
+    assert.equal(admin.right.module.status, 'ready');
+    assert.equal(admin.right.module.records[0].structured.legalEntity, 'Test Pte');
+    assert.equal(admin.right.organization.name, 'Test exchange');
+    assert.ok(Array.isArray(admin.right.organization.sources));
+    assert.equal((await compare(org, exchange, 'payments')).statusCode, 404);
+    assert.equal((await compare(org, 'missing', 'overview')).statusCode, 404);
+    const merged = (
+      await call('POST', '/api/organizations', { name: 'Merged exchange', tags: ['exchange'] })
+    ).json().id as string;
+    await h.ctx.pool.query(
+      `INSERT INTO omniboard.organization_aliases (alias_id, organization_id, reason, payload)
+       VALUES ($1, $2, 'Reviewed duplicate', '{}')`,
+      [merged, exchange],
+    );
+    assert.equal((await compare(org, merged, 'overview')).json().right.organization.id, exchange);
+  });
+
   await t.test('structured constraints: source id unique per organization', async () => {
     const api = {
       ...base,

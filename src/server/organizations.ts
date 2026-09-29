@@ -206,6 +206,14 @@ export async function directory(pool: Pool, role: Role, input: unknown, now: num
   const ids = page.map((r) => r.id);
   const details = await organizationRows(pool, ids, role);
   const points = await metricPoints(pool, ids);
+  // 机构选择器(frontend-spec 2.15)显示已关联的采集来源。
+  const linked = await pool.query<{ organization_id: string; sources: string[] }>(
+    `SELECT organization_id, array_agg(DISTINCT source ORDER BY source) AS sources
+       FROM omniboard.source_entity_links WHERE organization_id = ANY($1::text[])
+      GROUP BY organization_id`,
+    [ids],
+  );
+  const sourceNames = new Map(linked.rows.map((r) => [r.organization_id, r.sources]));
   const organizations: DirectoryOrganization[] = page.map((row) => {
     const org = details.get(row.id)!;
     const own = points.filter((pt) => pt.organizationId === row.id);
@@ -217,7 +225,12 @@ export async function directory(pool: Pool, role: Role, input: unknown, now: num
           choosePoint(own, c, c.id === sort ? unit : c.units[0]!, year, query.basis),
         ]),
     );
-    return { ...org, rank: row.rank === null ? null : Number(row.rank), values };
+    return {
+      ...org,
+      sourceNames: sourceNames.get(row.id) ?? [],
+      rank: row.rank === null ? null : Number(row.rank),
+      values,
+    };
   });
   return {
     organizations,
@@ -236,7 +249,7 @@ export async function directory(pool: Pool, role: Role, input: unknown, now: num
     },
   };
 }
-type OrganizationRow = Omit<DirectoryOrganization, 'rank' | 'values'>;
+type OrganizationRow = Omit<DirectoryOrganization, 'rank' | 'values' | 'sourceNames'>;
 // 带上 logo 证据 id:换 logo 后地址随之变化,浏览器缓存不会显示旧图。
 const logoUrl = (organizationId: string, evidenceId: string) =>
   `/api/organizations/${encodeURIComponent(organizationId)}/logo?v=${encodeURIComponent(evidenceId)}`;

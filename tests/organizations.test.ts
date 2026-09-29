@@ -350,6 +350,8 @@ test('organizations, directory ranking, metric observations and evidence', async
     );
     const trust = await rows('/api/organizations?tag=exchange&sort=trust_score&rankedOnly=true');
     assert.equal(trust[0]!.values.trust_score!.source, 'coingecko_web');
+    // 机构选择器(2.15)列出已关联的采集来源。
+    assert.deepEqual(trust[0]!.sourceNames, ['cmc_web', 'coingecko_web']);
     const points = (await get(`/api/organizations/${exchange}/metrics?column=volume_24h`)).json()
       .points as MetricPoint[];
     assert.deepEqual(new Set(points.map((p) => p.unit)), new Set(['USD', 'BTC']));
