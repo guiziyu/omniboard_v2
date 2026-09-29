@@ -57,7 +57,6 @@ import { waitForCollections, type Fetcher } from './collect';
 export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
-  /** 证据原件存储(data-model §1)。 */
   origin: string;
   now?: () => number;
   logger?: boolean;

@@ -68,7 +68,9 @@ v1 的边界成立于这些前提:BD 只做情报与商务,不碰实盘;Omniboar
 **新机器前置条件**(基础设施,owner 做,不在 `deploy.sh` 里):
 - Ubuntu arm64,Node LTS;
 - 安全组与 Rosseta `pg_hba` 放行到生产 PG 10.0.3.240:5433;
-- 对公网提供服务时:域名、Caddy、443 入站。
+- 对公网提供服务时:域名、Caddy、443 入站;
+- 通知邮件(可选):任一服务商的 SMTP 发信账号,连接串写进 v2 的 env 文件,`npm run cli -- notify-test`
+  发一封测试邮件确认。没有配置时通知在审计里记为 Failed,不影响操作。
 
 `deploy.sh` 启动后自检 PG 连通和 `omniboard` schema 版本,任何一项不通就不切换。
 - **开发**:两个仓库都在 Neo 上开发,改契约时一个会话同批改两边。测试用测试 PG(5432),
@@ -216,6 +218,7 @@ owner 已定:由 agent 经 API 逐条导入,顺便实测 agent 交互。
 - quant 删除 `TradingSystem` 账户标签(全系统只有 HFT 一个交易系统),D3 作废;HFT 成员只看
   `PortfolioGroup` + 账户可交易。
 - 先在 Neo 上跑(只监听本机,SSH 隧道访问),再部署到正式机;应用须能在任何满足前置条件的 arm64 机器上跑。
+- 应用不依赖任何云厂商的服务:证据原件改存 PG(§2),通知邮件改走标准 SMTP(D5 改判,原为 AWS SES)。
 
 ## 11. 翻案条件
 

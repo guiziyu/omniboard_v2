@@ -2589,7 +2589,7 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
 - 收件人:owner(`OMNIBOARD_NOTIFY_TO`,可多个)。触发:12.1 列出的影响实盘的操作、成员角色涉及 trader / admin 的变更、
   停用成员、重置验证器、登录锁定。
 - 内容:操作人、时间(UTC)、动作、目标、改前 / 改后摘要(不含密钥)、审计链接。标题前缀 `[Omniboard]`。
-- 发送在事务提交之后;失败不回滚业务操作,在审计里记为 Failed(D5)。
+- 发送在事务提交之后,经标准 SMTP(任一邮件服务商);失败不回滚业务操作,在审计里记为 Failed(D5)。
 
 ### 12.12 导航与路由增补
 - 侧栏在 Connectors 之后新增分组「Trading」:Accounts、HFT config(trader / admin 可见)。Administration 分组增加

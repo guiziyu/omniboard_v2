@@ -4,6 +4,8 @@ import { buildApp } from '../../src/server/app';
 import { bootstrapAdmin } from '../../src/server/auth';
 import { createTestDb } from '../test-db';
 import { quantFixture } from '../connector-fixture';
+import { fakeSmtp } from '../fake-smtp';
+import { smtpSender } from '../../src/server/notifications';
 export const port = 4319;
 const origin = `http://127.0.0.1:${port}`;
 const db = await createTestDb();
@@ -26,14 +28,24 @@ const sourceFetcher = async (url: string) => {
   const source = url.includes('coingecko') ? 'coingecko_web' : 'cmc_web';
   return { bytes: readFileSync(`tests/fixtures/${source}.html`), contentType: 'text/html' };
 };
+// 通知邮件发到本地 SMTP 替身,收到的邮件写进 test-results/mail.json,用例从中取审计链接。
+const smtp = await fakeSmtp({
+  onMail: () => writeFileSync('test-results/mail.json', JSON.stringify(smtp.mails)),
+});
 const app = await buildApp({
   pool: db.pool,
   totpKey: key,
   origin,
   sourceFetcher,
+  sender: smtpSender({
+    smtpUrl: smtp.url(),
+    from: 'omniboard@example.test',
+    to: ['owner@example.test'],
+  }),
 });
 const stop = async () => {
   await app.close();
+  await smtp.close();
   await db.drop();
   process.exit(0);
 };

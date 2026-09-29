@@ -1,3 +1,4 @@
+import { createTransport } from 'nodemailer';
 import type { Pool } from './db';
 import { tx } from './db';
 import { audit } from './audit';
@@ -6,6 +7,23 @@ import { audit } from './audit';
 export type Message = { subject: string; text: string };
 /** 未配置发送通道时为 undefined,结果记为 failed。 */
 export type Sender = ((message: Message) => Promise<void>) | undefined;
+export type NotifyConfig = { smtpUrl: string; from: string; to: string[] };
+/**
+ * 标准 SMTP(D5):不绑定邮件服务商,连接串(含账号)只放本仓库 .env。默认要求 TLS;
+ * 本机中继可在连接串里写 ?requireTLS=false。发送在投递事务里进行,所以超时取短。
+ */
+export function smtpSender(config: NotifyConfig): NonNullable<Sender> {
+  const transport = createTransport({
+    url: config.smtpUrl,
+    requireTLS: true,
+    connectionTimeout: 5_000,
+    greetingTimeout: 5_000,
+    socketTimeout: 10_000,
+  });
+  return async (message) => {
+    await transport.sendMail({ from: config.from, to: config.to, ...message });
+  };
+}
 type Pending = {
   id: string;
   at: Date;
