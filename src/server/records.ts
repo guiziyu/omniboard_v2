@@ -22,6 +22,7 @@ import type {
 import { getOrganizationProfile } from './profiles';
 import { lockChart, saveRelationship, validateReportsTo } from './org-chart';
 import { validateDiscussionReferences } from './discussion';
+import { ensurePersonDossier } from './person-dossier';
 // 模块数据与记录(frontend-spec 4.3、5.1–5.6;data-model §3.3)。
 
 /** 各来源最近一次成功采集中该机构的观测;history=true 时取全部成功批次(最多 200 行)。 */
@@ -426,6 +427,8 @@ export async function saveRecord(
       );
       if (!inserted.rowCount) problem(409, 'A record with this id already exists.');
     }
+    // 带姓名的记录建独立人员档案(6.4);导入时 v1 的档案随共享对象一起导入,这里不自动建。
+    if (!importing) await ensurePersonDossier(client, id_);
     if (relationship)
       await saveRelationship(client, store, id_, {
         ...relationship,

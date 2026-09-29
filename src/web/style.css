@@ -1728,3 +1728,209 @@ details[open] > .movement-summary > svg:last-child {
   margin: 12px 0 0 8px;
   padding: 4px 0 4px 16px;
 }
+
+/* ---- 关系与证据(frontend-spec 7):页头、对象浏览器、汇总条、关系详情、来源记录 ---- */
+.work-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.work-heading h2,
+.work-heading h3 {
+  margin: 0;
+}
+.work-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.work-actions button.link {
+  margin-top: 0;
+}
+.knowledge-layout {
+  display: grid;
+  gap: 18px;
+}
+.knowledge-layout.exploration-layout {
+  grid-template-columns: 210px minmax(0, 1fr);
+}
+.knowledge-layout.exploration-layout.browser-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.exploration-list label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.exploration-results {
+  max-height: 550px;
+  overflow: auto;
+  margin-top: 10px;
+}
+.exploration-results button {
+  display: block;
+  text-align: left;
+  padding: 10px;
+  width: 100%;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.exploration-results button.active {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  border-left: 3px solid var(--accent);
+}
+.exploration-results small,
+.exploration-results strong,
+.exploration-results span {
+  display: block;
+}
+.exploration-results small,
+.exploration-results span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.exploration-results strong {
+  font-size: 12px;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.object-main {
+  min-width: 0;
+}
+.exploration-context-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border-left: 3px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+.exploration-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.exploration-summary > span,
+.exploration-summary > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.exploration-summary b {
+  font-size: 14px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.work-viewbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.work-viewbar .segmented {
+  margin: 0;
+}
+.work-viewbar .segmented .count {
+  margin-left: 6px;
+  opacity: 0.8;
+}
+label.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+label.check-row input {
+  width: auto;
+}
+.edge-inspector {
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  padding: 14px;
+  border-radius: 6px;
+  margin: 12px;
+}
+.evidence-uncertain {
+  color: var(--amber);
+}
+.exploration-sources {
+  margin-top: 22px;
+}
+.exploration-source {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 8px 0;
+}
+.exploration-source > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.exploration-source > summary small,
+.exploration-source > summary strong {
+  display: block;
+}
+.exploration-source > summary small {
+  font-size: 10px;
+}
+.exploration-source-detail {
+  padding: 0 14px 14px;
+}
+.exploration-source-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  background: var(--panel);
+}
+.exploration-source-detail dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.exploration-source-detail dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.record-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+}
+.record-links:empty {
+  display: none;
+}
+.contact-person-card > .record-card {
+  margin: 0 0 0 16px;
+}
+@media (max-width: 900px) {
+  .knowledge-layout.exploration-layout {
+    grid-template-columns: 1fr;
+  }
+  .exploration-results {
+    max-height: 180px;
+  }
+  .exploration-source-detail dl {
+    grid-template-columns: 1fr;
+  }
+}

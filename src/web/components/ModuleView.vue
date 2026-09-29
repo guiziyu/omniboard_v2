@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // 一个模块 tab 的内容(frontend-spec 4.3、4.4、5.1、5.2、5.4),从 v1 ModuleView.vue 迁移。
-// 尚未迁移的专用面板(registry.ts pendingModules)显示「正在迁移」;共享对象链接、跟进任务
-// 随关系(§7)、工作台(§10)一起迁移。
+// 尚未迁移的专用面板(registry.ts pendingModules)显示「正在迁移」;「Create follow-up task」
+// 随工作台(§10)一起迁移。
 import { computed, nextTick, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
-import { atLeast, session } from '../api';
+import { RouterLink, useRoute } from 'vue-router';
+import { api, atLeast, session } from '../api';
 import { tr } from '../i18n';
 import { dateTime } from '../labels';
 import { openEvidence } from '../evidence';
@@ -18,6 +18,8 @@ import {
 } from '../../shared/record-summary';
 import { contactHref, knowledgeFields } from '../../shared/knowledge';
 import { pendingModules } from '../../shared/registry';
+import { groupContacts } from '../../shared/contact-groups';
+import type { KnowledgeObject } from '../../shared/operations';
 import type { ModuleData, ModuleRecord, Organization, TabDefinition } from '../../shared/types';
 import {
   evidencePresentation,
@@ -31,6 +33,7 @@ import {
 import AppDialog from './AppDialog.vue';
 import DiscussionPanel from './DiscussionPanel.vue';
 import Icon from './Icon.vue';
+import KnowledgePanel from './KnowledgePanel.vue';
 import OrgChart from './OrgChart.vue';
 import OrganizationOverview from './OrganizationOverview.vue';
 import PeopleMovements from './PeopleMovements.vue';
@@ -53,7 +56,33 @@ function edit(record?: ModuleRecord) {
   showEditor.value = true;
 }
 
-// ---- 联系人(5.1、5.3):分组筛选;合并卡片要等共享对象(§7) ----
+// ---- 关联的共享对象(5.2 第 9 项):列表加载后单独请求,失败时静默忽略 ----
+const sharedObjects = ref<KnowledgeObject[]>([]);
+let objectRequest = 0;
+watch(
+  () => [props.organization.id, props.data],
+  async () => {
+    const request = ++objectRequest;
+    sharedObjects.value = [];
+    if (!records.value.length || props.tab.id === 'relationships') return;
+    try {
+      const data = await api<{ objects: KnowledgeObject[] }>(
+        `/api/organizations/${props.organization.id}/objects`,
+      );
+      if (request === objectRequest) sharedObjects.value = data.objects;
+    } catch {
+      // 关联对象加载不到时,原记录照常显示。
+    }
+  },
+  { immediate: true },
+);
+const objectsFor = (recordId: string) =>
+  sharedObjects.value.filter((o) => o.records.some((r) => r.id === recordId));
+const relationshipsPath = computed(
+  () => `/w/internal/organizations/${props.organization.id}/relationships`,
+);
+
+// ---- 联系人(5.1、5.3):分组筛选;明确关联到同一 person 对象的记录合并成一张卡片 ----
 const contactFilter = ref('');
 const isContacts = computed(() => props.tab.id === 'contacts');
 const contactGroups = ['', 'People', 'Team channels', 'Official channels'] as const;
@@ -62,6 +91,13 @@ const displayed = computed(() =>
     ? records.value.filter((r) => contactGroup(r) === contactFilter.value)
     : records.value,
 );
+const contactCards = computed(() => groupContacts(records.value, sharedObjects.value));
+const cards = computed(() =>
+  isContacts.value
+    ? groupContacts(displayed.value, sharedObjects.value)
+    : displayed.value.map((record) => ({ id: record.id, records: [record] })),
+);
+const merged = (card: { records: ModuleRecord[] }) => isContacts.value && card.records.length > 1;
 // 联系人对话记录(5.9):列出关联到该联系人的讨论。
 const contactHistory = ref<ModuleRecord>();
 const copyStatus = ref('');
@@ -154,14 +190,16 @@ const nextStepTitle = computed(() =>
       : tr('What to check next'),
 );
 
-// ?record=<id>:展开并滚动到该记录(5.4)。
+// ?record=<id>:展开并滚动到该记录(5.4);在合并的联系人卡片里时先展开卡片。
 watch(
-  () => [route.query.record, props.data],
+  () => [route.query.record, props.data, sharedObjects.value],
   async () => {
     const target = String(route.query.record || '');
     if (!records.value.some((record) => record.id === target)) return;
     await nextTick();
     const element = document.getElementById(`record-${target}`);
+    const parent = element?.parentElement?.closest('details.contact-person-card');
+    if (parent instanceof HTMLDetailsElement) parent.open = true;
     if (element instanceof HTMLDetailsElement) element.open = true;
     element?.scrollIntoView({ block: 'start' });
   },
@@ -171,7 +209,7 @@ const showList = computed(
   () =>
     records.value.length > 0 &&
     !['chart', 'timeline', 'comments'].includes(props.tab.kind) &&
-    !['onboarding', 'roadmap'].includes(props.tab.id),
+    !['onboarding', 'roadmap', 'relationships'].includes(props.tab.id),
 );
 </script>
 <template>
@@ -199,7 +237,7 @@ const showList = computed(
       <p class="hint">This module is being moved to the new version.</p>
     </div>
     <template v-else>
-      <div v-if="tab.kind !== 'overview'" class="module-heading">
+      <div v-if="tab.kind !== 'overview' && tab.id !== 'relationships'" class="module-heading">
         <div>
           <h3>{{ tr(tab.title) }}</h3>
           <p class="hint">{{ tr(tab.description) }}</p>
@@ -227,6 +265,7 @@ const showList = computed(
         @history="historyFor = $event"
         @refresh="emit('refresh')"
       />
+      <KnowledgePanel v-if="tab.id === 'relationships'" :organization-id="organization.id" />
       <DiscussionPanel
         v-if="tab.kind === 'comments'"
         :organization="organization"
@@ -242,7 +281,11 @@ const showList = computed(
         @history="historyFor = $event"
       />
       <div
-        v-if="data.status === 'empty' && ['records', 'timeline'].includes(tab.kind)"
+        v-if="
+          data.status === 'empty' &&
+          ['records', 'timeline'].includes(tab.kind) &&
+          tab.id !== 'relationships'
+        "
         class="empty"
       >
         <h3>{{ tr('Ready for the first insight') }}</h3>
@@ -268,7 +311,10 @@ const showList = computed(
         >
           {{ tr(group || 'All') }}
           <small>{{
-            group ? records.filter((r) => contactGroup(r) === group).length : records.length
+            group
+              ? contactCards.filter((card) => card.records.some((r) => contactGroup(r) === group))
+                  .length
+              : contactCards.length
           }}</small>
         </button>
       </div>
@@ -276,177 +322,226 @@ const showList = computed(
         <h4 v-if="tab.kind === 'overview'" class="subheading">
           {{ tr('Team knowledge') }} <span>{{ records.length }}</span>
         </h4>
-        <details
-          v-for="record in displayed"
-          :id="`record-${record.id}`"
-          :key="record.id"
-          class="record-card"
+        <component
+          :is="merged(card) ? 'details' : 'div'"
+          v-for="card in cards"
+          :key="card.id"
+          :class="{ 'record-card contact-person-card': merged(card) }"
         >
-          <summary class="record-row">
-            <Icon :name="isContacts ? 'users' : 'file'" :size="17" />
+          <summary v-if="merged(card)" class="record-row">
+            <Icon name="users" :size="17" />
             <span class="record-row-main">
-              <strong :title="recordPrimary(record)">
-                {{ recordPrimary(record) }}
-                <code v-if="record.structured.sourceId">{{ record.structured.sourceId }}</code>
-              </strong>
-              <span
-                v-if="recordContext(record) && !decisionFacts(record).length"
-                class="record-row-context"
-                :title="recordContext(record)"
-                >{{ recordContext(record) }}</span
-              >
-              <span v-if="decisionFacts(record).length" class="decision-facts">
-                <span v-for="fact in decisionFacts(record)" :key="fact.id">
-                  <small>{{ tr(fact.label) }}</small>
-                  <span :title="fact.value">{{ fact.value }}</span>
-                </span>
-              </span>
-              <span v-if="isContacts" class="record-row-context">
-                {{ record.structured.value }} · {{ tr('Owner') }}:
-                {{ record.structured.owner || tr('Not assigned') }}
-              </span>
-            </span>
-            <span v-if="knowledgeFields[tab.id]" class="record-state">
-              {{ business(record) }}
-              <small :class="{ overdue: reviewDue(record, today()) }">
+              <strong>{{ recordPrimary(card.records[0]!) }}</strong>
+              <span class="record-row-context">
                 {{
-                  reviewDue(record, today())
-                    ? tr('Review overdue')
-                    : reviewPresentation(record.status).label
+                  [...new Set(card.records.map((r) => r.structured.role).filter(Boolean))].join(
+                    ' · ',
+                  )
                 }}
-              </small>
-            </span>
-            <span v-else class="hint">{{ dateTime(record.updatedAt) }}</span>
-            <span v-if="isContacts" class="quick-actions">
-              <a
-                v-if="contactHref(record.structured)"
-                :href="contactHref(record.structured)"
-                target="_blank"
-                rel="noopener noreferrer"
-                :aria-label="tr('Open contact channel for {0}', [recordPrimary(record)])"
-                @click.stop
-                ><Icon name="external" :size="15"
-              /></a>
-              <button
-                type="button"
-                class="ghost"
-                :aria-label="tr('Copy contact for {0}', [recordPrimary(record)])"
-                @click.stop.prevent="copyContact(record)"
-              >
-                <Icon name="copy" :size="15" />
-              </button>
-              <button
-                type="button"
-                class="ghost"
-                :aria-label="tr('Conversation history for {0}', [recordPrimary(record)])"
-                @click.stop.prevent="contactHistory = record"
-              >
-                <Icon name="clock" :size="15" />
-              </button>
+              </span>
+              <span class="record-row-context">
+                {{
+                  card.records
+                    .map(
+                      (r) =>
+                        `${fieldOptionLabel('channel', r.structured.channel || '')}: ${r.structured.value}`,
+                    )
+                    .join(' · ')
+                }}
+              </span>
             </span>
           </summary>
-          <div class="record-expanded">
-            <header class="record-head">
-              <span
-                v-if="record.structured.evidenceLevel"
-                class="tag"
-                :title="sourceBadge(record).hint"
-                >{{ tr('Source:') }} {{ tr(sourceBadge(record).label) }}</span
-              >
-              <span v-if="record.visibility === 'admin'" class="tag">
-                <Icon name="lock" :size="11" /> {{ tr('Administrator') }}
+          <details
+            v-for="record in card.records"
+            :id="`record-${record.id}`"
+            :key="record.id"
+            class="record-card"
+          >
+            <summary class="record-row">
+              <Icon :name="isContacts ? 'users' : 'file'" :size="17" />
+              <span class="record-row-main">
+                <strong :title="recordPrimary(record)">
+                  {{
+                    merged(card)
+                      ? fieldOptionLabel('channel', record.structured.channel || '')
+                      : recordPrimary(record)
+                  }}
+                  <code v-if="record.structured.sourceId">{{ record.structured.sourceId }}</code>
+                </strong>
+                <span
+                  v-if="recordContext(record) && !decisionFacts(record).length"
+                  class="record-row-context"
+                  :title="recordContext(record)"
+                  >{{ recordContext(record) }}</span
+                >
+                <span v-if="decisionFacts(record).length" class="decision-facts">
+                  <span v-for="fact in decisionFacts(record)" :key="fact.id">
+                    <small>{{ tr(fact.label) }}</small>
+                    <span :title="fact.value">{{ fact.value }}</span>
+                  </span>
+                </span>
+                <span v-if="isContacts" class="record-row-context">
+                  {{ record.structured.value }} · {{ tr('Owner') }}:
+                  {{ record.structured.owner || tr('Not assigned') }}
+                </span>
               </span>
-              <small class="push">v{{ record.revision }}</small>
-              <button
-                v-if="canEdit"
-                type="button"
-                class="ghost"
-                :aria-label="tr('Edit {0}', [recordPrimary(record)])"
-                @click="edit(record)"
-              >
-                <Icon name="edit" :size="15" />
-              </button>
-            </header>
-            <h4>{{ readableTitle(record.title) }}</h4>
-            <p v-if="record.structured.evidenceLevel" class="hint">
-              <span class="tag">{{
-                fieldOptionLabel('sensitivity', record.structured.sensitivity || '')
-              }}</span>
-              {{
-                tr('{0} · Reviewed {1}', [record.structured.owner, record.structured.reviewedOn])
-              }}
-            </p>
-            <p v-if="isContacts" class="contact-primary">
-              <a
-                v-if="contactHref(record.structured)"
-                :href="contactHref(record.structured)"
-                target="_blank"
-                rel="noopener noreferrer"
-                >{{ record.structured.value }}</a
-              >
-              <span v-else>{{ record.structured.value }}</span>
-              <span class="hint">{{ record.personName || tr('Organization channel') }}</span>
-            </p>
-            <a
-              v-if="
-                record.personEmail &&
-                (!isContacts || record.personEmail !== record.structured.value)
-              "
-              :href="`mailto:${record.personEmail}`"
-              >{{ record.personEmail }}</a
-            >
-            <p v-if="record.personName && !record.personEmail && isContacts" class="hint">
-              {{ tr('Email not published') }}
-            </p>
-            <p v-if="isNarrativeIntelligence(tab.id)" class="record-body">{{ record.body }}</p>
-            <component
-              :is="isNarrativeIntelligence(tab.id) ? 'details' : 'div'"
-              v-if="knowledgeFields[tab.id] && fieldsFor(record, false).length"
-            >
-              <summary v-if="isNarrativeIntelligence(tab.id)">
-                {{ tr('Supporting details') }}
-              </summary>
-              <dl class="knowledge-grid">
-                <div v-for="field in fieldsFor(record, false)" :key="field.id">
-                  <dt>{{ tr(field.label) }}</dt>
-                  <dd>
-                    {{ fieldValue(record, field) }}
-                    <small v-if="fieldHint(field.id, record.structured[field.id] || '')">
-                      {{ fieldHint(field.id, record.structured[field.id] || '') }}
-                    </small>
-                  </dd>
-                </div>
-              </dl>
-            </component>
-            <div v-if="record.structured.verification" class="next-step">
-              <strong>{{ nextStepTitle }}</strong>
-              <p>{{ readableNote(record.structured.verification) }}</p>
-            </div>
-            <p v-if="!isNarrativeIntelligence(tab.id)" class="record-body">{{ record.body }}</p>
-            <span v-if="record.scope" class="tag">
-              {{ record.scope === 'Organization-wide' ? tr('Organization-wide') : record.scope }}
-            </span>
-            <footer class="record-footer">
-              <span>{{ record.author }} · {{ dateTime(record.updatedAt) }}</span>
-              <span>
-                <button type="button" class="link" @click="openEvidence(record.evidenceId)">
-                  {{ tr('Original source') }}
+              <span v-if="knowledgeFields[tab.id]" class="record-state">
+                {{ business(record) }}
+                <small :class="{ overdue: reviewDue(record, today()) }">
+                  {{
+                    reviewDue(record, today())
+                      ? tr('Review overdue')
+                      : reviewPresentation(record.status).label
+                  }}
+                </small>
+              </span>
+              <span v-else class="hint">{{ dateTime(record.updatedAt) }}</span>
+              <span v-if="isContacts" class="quick-actions">
+                <a
+                  v-if="contactHref(record.structured)"
+                  :href="contactHref(record.structured)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :aria-label="tr('Open contact channel for {0}', [recordPrimary(record)])"
+                  @click.stop
+                  ><Icon name="external" :size="15"
+                /></a>
+                <button
+                  type="button"
+                  class="ghost"
+                  :aria-label="tr('Copy contact for {0}', [recordPrimary(record)])"
+                  @click.stop.prevent="copyContact(record)"
+                >
+                  <Icon name="copy" :size="15" />
                 </button>
                 <button
-                  v-if="record.attachmentEvidenceId"
                   type="button"
-                  class="link"
-                  @click="openEvidence(record.attachmentEvidenceId)"
+                  class="ghost"
+                  :aria-label="tr('Conversation history for {0}', [recordPrimary(record)])"
+                  @click.stop.prevent="contactHistory = record"
                 >
-                  {{ tr('Attachment') }}
-                </button>
-                <button type="button" class="link" @click="historyFor = record.id">
-                  {{ tr('History') }}
+                  <Icon name="clock" :size="15" />
                 </button>
               </span>
-            </footer>
-          </div>
-        </details>
+            </summary>
+            <div class="record-expanded">
+              <header class="record-head">
+                <span
+                  v-if="record.structured.evidenceLevel"
+                  class="tag"
+                  :title="sourceBadge(record).hint"
+                  >{{ tr('Source:') }} {{ tr(sourceBadge(record).label) }}</span
+                >
+                <span v-if="record.visibility === 'admin'" class="tag">
+                  <Icon name="lock" :size="11" /> {{ tr('Administrator') }}
+                </span>
+                <small class="push">v{{ record.revision }}</small>
+                <button
+                  v-if="canEdit"
+                  type="button"
+                  class="ghost"
+                  :aria-label="tr('Edit {0}', [recordPrimary(record)])"
+                  @click="edit(record)"
+                >
+                  <Icon name="edit" :size="15" />
+                </button>
+              </header>
+              <h4>{{ readableTitle(record.title) }}</h4>
+              <p v-if="record.structured.evidenceLevel" class="hint">
+                <span class="tag">{{
+                  fieldOptionLabel('sensitivity', record.structured.sensitivity || '')
+                }}</span>
+                {{
+                  tr('{0} · Reviewed {1}', [record.structured.owner, record.structured.reviewedOn])
+                }}
+              </p>
+              <p v-if="isContacts" class="contact-primary">
+                <a
+                  v-if="contactHref(record.structured)"
+                  :href="contactHref(record.structured)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >{{ record.structured.value }}</a
+                >
+                <span v-else>{{ record.structured.value }}</span>
+                <span class="hint">{{ record.personName || tr('Organization channel') }}</span>
+              </p>
+              <a
+                v-if="
+                  record.personEmail &&
+                  (!isContacts || record.personEmail !== record.structured.value)
+                "
+                :href="`mailto:${record.personEmail}`"
+                >{{ record.personEmail }}</a
+              >
+              <p v-if="record.personName && !record.personEmail && isContacts" class="hint">
+                {{ tr('Email not published') }}
+              </p>
+              <p v-if="isNarrativeIntelligence(tab.id)" class="record-body">{{ record.body }}</p>
+              <component
+                :is="isNarrativeIntelligence(tab.id) ? 'details' : 'div'"
+                v-if="knowledgeFields[tab.id] && fieldsFor(record, false).length"
+              >
+                <summary v-if="isNarrativeIntelligence(tab.id)">
+                  {{ tr('Supporting details') }}
+                </summary>
+                <dl class="knowledge-grid">
+                  <div v-for="field in fieldsFor(record, false)" :key="field.id">
+                    <dt>{{ tr(field.label) }}</dt>
+                    <dd>
+                      {{ fieldValue(record, field) }}
+                      <small v-if="fieldHint(field.id, record.structured[field.id] || '')">
+                        {{ fieldHint(field.id, record.structured[field.id] || '') }}
+                      </small>
+                    </dd>
+                  </div>
+                </dl>
+              </component>
+              <div v-if="record.structured.verification" class="next-step">
+                <strong>{{ nextStepTitle }}</strong>
+                <p>{{ readableNote(record.structured.verification) }}</p>
+              </div>
+              <p v-if="!isNarrativeIntelligence(tab.id)" class="record-body">{{ record.body }}</p>
+              <span v-if="record.scope" class="tag">
+                {{ record.scope === 'Organization-wide' ? tr('Organization-wide') : record.scope }}
+              </span>
+              <p class="record-links">
+                <RouterLink
+                  v-for="object in objectsFor(record.id)"
+                  :key="object.id"
+                  :to="{ path: relationshipsPath, query: { object: object.id } }"
+                >
+                  {{ tr('{0} · Connections & evidence', [object.name]) }}
+                </RouterLink>
+                <RouterLink
+                  v-if="!objectsFor(record.id).length && canEdit"
+                  :to="{ path: relationshipsPath, query: { sourceRecord: record.id } }"
+                >
+                  {{ tr('Connect to a shared object') }}
+                </RouterLink>
+              </p>
+              <footer class="record-footer">
+                <span>{{ record.author }} · {{ dateTime(record.updatedAt) }}</span>
+                <span>
+                  <button type="button" class="link" @click="openEvidence(record.evidenceId)">
+                    {{ tr('Original source') }}
+                  </button>
+                  <button
+                    v-if="record.attachmentEvidenceId"
+                    type="button"
+                    class="link"
+                    @click="openEvidence(record.attachmentEvidenceId)"
+                  >
+                    {{ tr('Attachment') }}
+                  </button>
+                  <button type="button" class="link" @click="historyFor = record.id">
+                    {{ tr('History') }}
+                  </button>
+                </span>
+              </footer>
+            </div>
+          </details>
+        </component>
       </div>
     </template>
     <RecordEditor

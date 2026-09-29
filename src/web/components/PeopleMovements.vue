@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 人员变动列表(frontend-spec 6.5–6.7),从 v1 PeopleMovements.vue 迁移。
-// 「探索此人身份」随关系(§7)迁移;由个人履历生成的变动(structured.personProfileId)随人才库(6.14)迁移,
-// 这里只保留「不可直接编辑」的规则。
+// 由个人履历生成的变动(structured.personProfileId)随人才库(6.14)迁移,这里只保留「不可直接编辑」的规则。
+// 「探索此人身份」统一链到 `record:<id>`,关系页再解析到承接这条记录的共享对象(7.1)。
 import { computed, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { atLeast, session } from '../api';
 import { tr } from '../i18n';
 import { dateTime } from '../labels';
@@ -228,6 +229,14 @@ const here = (name: string) => sameMovementOrganization(name, props.organization
         <footer class="record-footer">
           <span>{{ record.author }} · {{ dateTime(record.updatedAt) }}</span>
           <span>
+            <RouterLink
+              :to="{
+                path: `/w/internal/organizations/${organization.id}/relationships`,
+                query: { object: `record:${record.id}` },
+              }"
+            >
+              {{ tr('Explore identity') }}
+            </RouterLink>
             <button type="button" class="link" @click="openEvidence(record.evidenceId)">
               {{ tr('Original source') }}
             </button>

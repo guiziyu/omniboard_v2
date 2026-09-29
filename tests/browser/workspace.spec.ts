@@ -369,6 +369,117 @@ test('workspace access pages', async ({ page }) => {
     await page.getByRole('button', { name: 'Back to organizations' }).click();
   });
 
+  await test.step('relationships: graph, evidence, return state, shared object, claims, links', async () => {
+    await page.getByRole('button', { name: 'Acme Exchange', exact: true }).click();
+    await page.getByRole('button', { name: 'Relationships', exact: true }).click();
+    const graph = page.getByRole('region', { name: 'Relationship graph', exact: true });
+    // 组织架构图的两位人员各有自动人员档案,汇报线画在档案之间(6.4、7.4)。
+    const morgan = graph.getByRole('button', {
+      name: 'Person Morgan Manager Shared object',
+      exact: true,
+    });
+    await expect(morgan).toBeVisible();
+    await expect(
+      graph.getByRole('button', { name: 'Person Casey Chief Shared object', exact: true }),
+    ).toBeVisible();
+    // 水平的 SVG 路径没有高度,用键盘触发。
+    const line = graph.getByRole('button', {
+      name: 'Morgan Manager → Casey Chief · Reports to',
+      exact: true,
+    });
+    await line.press('Enter');
+    const details = page.getByRole('region', { name: 'Relationship details' });
+    await expect(details).toContainText('Confirmed relationship');
+    await details.getByRole('button', { name: 'Read relationship evidence' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Original reference' });
+    await expect(drawer).toContainText('Casey confirmed the reporting line');
+    await page.keyboard.press('Escape');
+
+    // 视图状态:离开再后退时恢复深度、历史、缩放和已选关系(7.8)。
+    await page.getByRole('checkbox', { name: 'Include history', exact: true }).check();
+    await graph.getByRole('combobox', { name: 'Explore depth', exact: true }).selectOption('2');
+    await graph.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await graph.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await line.press('Enter');
+    const zoom = await graph.getByRole('button', { name: 'Reset zoom', exact: true }).textContent();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await expect(page).toHaveURL(/\/overview$/);
+    await page.goBack();
+    await expect(graph.getByRole('combobox', { name: 'Explore depth', exact: true })).toHaveValue(
+      '2',
+    );
+    await expect(
+      page.getByRole('checkbox', { name: 'Include history', exact: true }),
+    ).toBeChecked();
+    await expect(graph.getByRole('button', { name: 'Reset zoom', exact: true })).toHaveText(zoom!);
+    await expect(details).toContainText('Confirmed relationship');
+
+    // 新增共享对象:必须选一条已有来源记录(7.10)。
+    await page.getByRole('button', { name: 'Add shared object' }).click();
+    const create = page.getByRole('dialog', { name: 'Add a shared object' });
+    await create.getByLabel('Name').fill('Acme spot API');
+    await create.getByLabel('Scope').fill('Spot');
+    await create
+      .getByLabel('Existing source record')
+      .selectOption({ label: 'Acme Exchange · Acme institutional desk' });
+    await create.getByRole('button', { name: 'Save' }).click();
+    await expect(create).toBeHidden();
+    await expect(page).toHaveURL(/object=/);
+    await expect(page.getByRole('heading', { name: 'Acme spot API' })).toBeVisible();
+    const identity = page.getByRole('region', { name: 'Identity across organizations' });
+    await expect(identity).toContainText('Linked records · 1');
+
+    // 两条不同的结论同 scope → 冲突;采纳一条,另一条成为历史(7.11–7.13)。
+    for (const value of ['Read-only keys', 'Trading keys']) {
+      await page.getByRole('button', { name: 'Add evidence' }).click();
+      const claim = page.getByRole('dialog', { name: 'Record a sourced fact' });
+      await claim.getByLabel('Value').fill(value);
+      await expect(claim.getByLabel('Exact scope')).toHaveValue('Spot');
+      await claim.getByLabel('Original information').fill(`Desk email: ${value} are available.`);
+      await claim.getByRole('button', { name: 'Save' }).click();
+      await expect(claim).toBeHidden();
+    }
+    await page.getByRole('button', { name: 'Compare evidence 2', exact: true }).click();
+    const trading = page.getByRole('article').filter({ hasText: 'Trading keys' });
+    await expect(trading).toContainText('Conflicting sources');
+    await trading.getByRole('button', { name: 'Review & adopt' }).click();
+    const review = page.getByRole('dialog', { name: 'Review the current interpretation' });
+    await review
+      .getByLabel('Reason for this decision')
+      .fill('Signed desk agreement covers trading.');
+    await review.getByRole('button', { name: 'Adopt with decision record' }).click();
+    await expect(review).toBeHidden();
+    // 冲突解除后分组默认收起,展开后看结论与历史。
+    await page.getByText('API permission', { exact: true }).click();
+    await expect(trading).toContainText('Adopted by team');
+    await expect(page.getByRole('article').filter({ hasText: 'Read-only keys' })).toContainText(
+      'Previous interpretation',
+    );
+    await trading.getByText('Decision trail', { exact: true }).click();
+    await expect(trading).toContainText('Signed desk agreement covers trading.');
+
+    // 跨机构关联:打开时按对象名搜索;选了候选且写了理由才能确认。
+    await identity.getByRole('button', { name: 'Link across organizations' }).click();
+    const link = page.getByRole('dialog', { name: 'Link across organizations' });
+    await expect(link.getByRole('textbox', { name: 'Search identities and records' })).toHaveValue(
+      'Acme spot API',
+    );
+    await expect(link.getByRole('button', { name: 'Confirm shared identity' })).toBeDisabled();
+    await link.getByRole('button', { name: 'Cancel' }).click();
+
+    // 记录详情里的关联对象链接,以及人员变动的「探索此人身份」(5.2、6.5)。
+    await page.getByRole('button', { name: 'Contacts', exact: true }).click();
+    const desk = page.locator('details.record-card').filter({ hasText: 'Acme institutional desk' });
+    await desk.locator('summary').click();
+    await desk.getByRole('link', { name: 'Acme spot API · Connections & evidence' }).click();
+    await expect(page.getByRole('heading', { name: 'Acme spot API' })).toBeVisible();
+    await page.getByRole('button', { name: 'People Movements', exact: true }).click();
+    await page.getByText('Robin Fixture', { exact: true }).click();
+    await page.getByRole('link', { name: 'Explore identity' }).click();
+    await expect(page.getByRole('heading', { name: 'Robin Fixture' })).toBeVisible();
+    await page.getByRole('button', { name: 'Back to organizations' }).click();
+  });
+
   await test.step('team members: invite, change role, dialogs close with Escape', async () => {
     await page.getByRole('link', { name: 'Team members' }).click();
     await expect(page.getByRole('heading', { name: 'Team members' })).toBeVisible();

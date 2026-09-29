@@ -118,7 +118,7 @@
 | `record_aliases`、`org_chart_relationships` | — | ✓ |
 | `metric_observations` | `value` → `numeric` | ✓(人工录入的观测) |
 | `edit_history` | 新写入从 v2 开始 | ✗(proposal §9) |
-| `operation_events`(活动历史) | `id bigint generated always as identity` | ✗(同上;待裁决 D6) |
+| `operation_events`(活动历史) | `id bigint generated always as identity`;`payload_json` → `payload jsonb`;加 `import_id`(v1 id,导入幂等) | ✓(**改判**:结论采纳的理由只存在活动事件里,不迁就丢了 7.13 的 Decision trail;D6 已允许写入原时间) |
 | `intelligence_reads`、`organization_follows` | — | ✓ |
 | `capital_scenarios`、`position_drivers` | `*_json` → `jsonb` | ✓ |
 | `imports` | 批量导入的幂等键(附录 A) | ✓ |
@@ -129,6 +129,21 @@
 `knowledge_relations`、`knowledge_identity_redirects`、`knowledge_identity_events`、`person_source_profiles`、
 `person_profile_captures`、`person_profile_positions`、`person_profile_records`、`person_duplicate_decisions`、
 `work_tasks`、`task_dependencies`、`task_objects`:列不变,按 1 的类型约定转换,全部 ✓。
+
+实现补充(共享对象、结论与身份,`005_knowledge.sql`):
+- 已建:`knowledge_objects`、`object_records`、`knowledge_claims`、`knowledge_relations`、
+  `knowledge_identity_redirects`、`knowledge_identity_events`、`operation_events`。人员档案表与任务表随人才库(6.9)、
+  工作台(§10)一起建。
+- `knowledge_claim_contexts` 并入 `knowledge_claims.organization_id`(一对一,v1 由触发器在插入时补写)。
+- 所有 `raw_id` 改名 `evidence_id`;API 字段 `rawId` 改名 `evidenceId`。日期列按 §1:`''` 记为 `NULL`,API 仍返回 `''`。
+- 身份相关的写入用事务级 advisory lock 串行(合并链、重定向与记录归属的检查读到的都是已提交状态)。
+- 带姓名的记录保存后自动建人员档案 `person-record:<记录 id>`(v1 `ensurePersonDossier`);**导入记录时不建**,
+  v1 的档案随共享对象一起导入,避免 id 冲突。
+- v1 身份索引会把个人履历上的任职机构算进对象的关联机构;这一项随人才库一起接回。
+- 导入接口(只在导入窗口内由 admin 令牌调用;以 id 为键,已存在返回 409,与记录导入相同;引用的对象、记录、证据和
+  成员须先导入,否则 422):`/api/import/knowledge-objects`(带 `recordIds`)、`knowledge-claims`(带
+  `organizationId`,即 v1 的 claim context)、`knowledge-relations`、`identity-redirects`(按对幂等)、
+  `identity-events`、`operation-events`(以 `importId` 为键)。team 对象不能引用 admin 记录或证据。
 
 ### 3.5 不再存在的 v1 表
 

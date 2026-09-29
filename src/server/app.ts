@@ -48,6 +48,7 @@ import { expectedVersion, schemaVersion } from './migrate';
 import { requireInteractive, requireRole } from './access';
 import type { EvidenceStore } from './evidence';
 import { registerOrganizationRoutes } from './organization-routes';
+import { registerKnowledgeRoutes } from './knowledge-routes';
 export type AppOptions = {
   pool: Pool;
   totpKey: Buffer;
@@ -374,7 +375,9 @@ export async function buildApp(options: AppOptions) {
     });
   });
 
-  registerOrganizationRoutes(app, { pool: options.pool, store: options.evidence, now: ctx.now });
+  const deps = { pool: options.pool, store: options.evidence, now: ctx.now };
+  registerOrganizationRoutes(app, deps);
+  registerKnowledgeRoutes(app, deps);
 
   if (options.autoNotify !== false)
     app.addHook('onResponse', async (request) => {
