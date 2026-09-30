@@ -2537,7 +2537,7 @@ URL：`?tag=&q=&sort=&direction=&unit=&year=&basis=&columns=&page=`，全部用 
   - Account name:必填,去掉首尾空白后非空;下方实时预览 `auth_id`。
   - Account type:Live / Test / Read-only(单选,对应不加标签 / `Test` / `ReadOnly`)。
   - Portfolio group:文本,可空;输入时建议已有账户与 HFT 配置里用过的分组。
-  - Other tags:Unified、Low-latency account、Arbitrage account、Additional leverage risk limits、Initializing(复选);
+  - Other tags:Unified、Low-latency account、RPI whitelist、Arbitrage account、Additional leverage risk limits、Initializing(复选);
     VIP level、Market maker level(0–255 整数,可空);Client name(文本,可空)。
   - `ListingTagBlocklist`、`WalletBlocked` 不在表单里,编辑时原样保留。
   - IP whitelist:每行一个 IPv4 / IPv6 地址;「Add known egress IP」按钮从 `known_egress_ips` 选择。Test 以外必填。

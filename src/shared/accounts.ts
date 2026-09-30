@@ -35,6 +35,7 @@ export const flagTags = [
   'Test',
   'LowLatencyAccount',
   'AdditionalLeverageRiskLimits',
+  'RpiWhitelist',
   'ArbitrageAccount',
 ] as const;
 /** 带值变体(serde 写成单键对象)。后两种结构复杂,v2 不编辑,原样保留。 */
@@ -129,6 +130,7 @@ export type AccountSettings = {
   initializing: boolean;
   unified: boolean;
   lowLatency: boolean;
+  rpiWhitelist: boolean;
   arbitrage: boolean;
   additionalLeverage: boolean;
   vipLevel: number | null;
@@ -138,6 +140,7 @@ export type AccountSettings = {
 export const flagLabels = {
   unified: ['Unified', 'Unified'],
   lowLatency: ['LowLatencyAccount', 'Low-latency account'],
+  rpiWhitelist: ['RpiWhitelist', 'RPI whitelist'],
   arbitrage: ['ArbitrageAccount', 'Arbitrage account'],
   additionalLeverage: ['AdditionalLeverageRiskLimits', 'Additional leverage risk limits'],
   initializing: ['Initializing', 'Initializing'],
@@ -157,6 +160,7 @@ export function settingsOf(tags: AccountTag[]): AccountSettings {
     initializing: hasTag(tags, 'Initializing'),
     unified: hasTag(tags, 'Unified'),
     lowLatency: hasTag(tags, 'LowLatencyAccount'),
+    rpiWhitelist: hasTag(tags, 'RpiWhitelist'),
     arbitrage: hasTag(tags, 'ArbitrageAccount'),
     additionalLeverage: hasTag(tags, 'AdditionalLeverageRiskLimits'),
     vipLevel: level('VipLevel'),
@@ -178,6 +182,7 @@ const order = [
   'AdditionalLeverageRiskLimits',
   'VipLevel',
   'MarketMakerLevel',
+  'RpiWhitelist',
   'ArbitrageAccount',
   'Client',
 ];
@@ -194,6 +199,7 @@ export function tagsOf(settings: AccountSettings, current: AccountTag[] = []): A
   if (settings.vipLevel !== null) tags.push({ VipLevel: settings.vipLevel });
   if (settings.marketMakerLevel !== null)
     tags.push({ MarketMakerLevel: settings.marketMakerLevel });
+  if (settings.rpiWhitelist) tags.push('RpiWhitelist');
   if (settings.arbitrage) tags.push('ArbitrageAccount');
   if (settings.clientName) tags.push({ Client: { client_name: settings.clientName } });
   return sortTags(tags);

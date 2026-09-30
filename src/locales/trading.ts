@@ -7,6 +7,7 @@ export default [
   ['Live', '实盘', '실거래'],
   ['Unified', '统一账户', '통합 계정'],
   ['Low-latency account', '低延迟账户', '저지연 계정'],
+  ['RPI whitelist', 'RPI 白名单', 'RPI 화이트리스트'],
   ['Arbitrage account', '套利账户', '차익거래 계정'],
   ['Additional leverage risk limits', '额外杠杆风险限额', '추가 레버리지 리스크 한도'],
   ['Portfolio group', '组合分组', '포트폴리오 그룹'],

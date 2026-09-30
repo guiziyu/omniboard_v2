@@ -149,6 +149,7 @@ const settingsInput = z
     initializing: z.boolean(),
     unified: z.boolean(),
     lowLatency: z.boolean(),
+    rpiWhitelist: z.boolean(),
     arbitrage: z.boolean(),
     additionalLeverage: z.boolean(),
     vipLevel: z.number().int().min(0).max(255).nullable(),

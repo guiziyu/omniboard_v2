@@ -52,6 +52,7 @@ const form = ref<{
       initializing: false,
       unified: false,
       lowLatency: false,
+      rpiWhitelist: false,
       arbitrage: false,
       additionalLeverage: false,
       vipLevel: null,

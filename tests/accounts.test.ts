@@ -26,6 +26,7 @@ const settings = (extra: Partial<AccountSettings> = {}): AccountSettings => ({
   initializing: false,
   unified: false,
   lowLatency: false,
+  rpiWhitelist: false,
   arbitrage: false,
   additionalLeverage: false,
   vipLevel: null,
@@ -51,6 +52,11 @@ test('account tags: quant serde form, status priority, preserved tags, IP rules'
   assert.equal(
     tagsText(tagsOf(settings({ type: 'read-only', vipLevel: 3, clientName: 'Acme' }))),
     '["ReadOnly",{"PortfolioGroup":"lp-test"},{"VipLevel":3},{"Client":{"client_name":"Acme"}}]',
+  );
+  // RpiWhitelist 与 MarketMakerLevel 无关,顺序跟 quant 变体顺序。
+  assert.equal(
+    tagsText(tagsOf({ ...settingsOf(parseTags('["RpiWhitelist"]')), marketMakerLevel: 1 })),
+    '[{"MarketMakerLevel":1},"RpiWhitelist"]',
   );
   assert.equal(accountStatus(parseTags('["Test","Terminated","ReadOnly"]')), 'terminated');
   assert.equal(accountStatus(parseTags('["Initializing","Test"]')), 'test');
